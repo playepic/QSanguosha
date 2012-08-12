@@ -84,7 +84,7 @@ public:
     virtual bool hasPreAction() const;
 
     virtual void setFlags(const QString &flag) const;
-    inline void setFlags(const QStringList &fs) { flags = fs; }
+    inline virtual void setFlags(const QStringList &fs) { flags = fs; }
     bool hasFlag(const QString &flag) const;
     virtual void clearFlags() const;
 
