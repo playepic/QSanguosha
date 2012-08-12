@@ -10,11 +10,12 @@ GongxinCard::GongxinCard(){
 }
 
 bool GongxinCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const{
-    return targets.isEmpty(); 
+    return targets.isEmpty() and to_select != Self; 
 }
 
 void GongxinCard::onEffect(const CardEffectStruct &effect) const{
-    effect.from->getRoom()->doGongxin(effect.from, effect.to);
+	if (!effect.to->isKongcheng())
+		effect.from->getRoom()->doGongxin(effect.from, effect.to);
 }
 
 class Wuhun: public TriggerSkill{
