@@ -459,10 +459,10 @@ public:
         log.from = player;
         log.arg = QString::number(damage.damage);
         log.arg2 = objectName();
-        player->getRoom()->sendLog(log);
+        room->sendLog(log);
 
         player->gainMark("@wrath", damage.damage);
-        player->getRoom()->broadcastSkillInvoke(objectName());
+        room->broadcastSkillInvoke(objectName());
 
         return false;
     }
@@ -780,7 +780,7 @@ public:
         return target != NULL && target->getMark("@gale") > 0;
     }
 
-    virtual bool trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *player, QVariant &data) const{
+    virtual bool trigger(TriggerEvent , Room* room, ServerPlayer *player, QVariant &data) const{
         DamageStruct damage = data.value<DamageStruct>();
         if(damage.nature == DamageStruct::Fire){
             LogMessage log;
@@ -788,7 +788,7 @@ public:
             log.from = player;
             log.arg = QString::number(damage.damage);
             log.arg2 = QString::number(damage.damage + 1);
-            player->getRoom()->sendLog(log);
+            room->sendLog(log);
 
             damage.damage ++;
             data = QVariant::fromValue(damage);
@@ -900,10 +900,9 @@ public:
         return target != NULL && target->getMark("@fog") > 0;
     }
 
-    virtual bool trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *player, QVariant &data) const{
+    virtual bool trigger(TriggerEvent , Room* room, ServerPlayer *player, QVariant &data) const{
         DamageStruct damage = data.value<DamageStruct>();
         if(damage.nature != DamageStruct::Thunder){
-            Room *room = player->getRoom();
 
             LogMessage log;
             log.type = "#FogProtect";
@@ -1143,7 +1142,6 @@ public:
             log.from = killer;
             log.to << player;
 
-            Room *room = player->getRoom();
             log.arg = room->getCurrent()->getGeneralName();
             room->sendLog(log);
         }

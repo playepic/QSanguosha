@@ -322,7 +322,7 @@ public:
             log.from = player;
             log.arg = QString::number(damage.damage);
             log.arg2 = QString::number(++ damage.damage);
-            player->getRoom()->sendLog(log);
+            room->sendLog(log);
 
             data = QVariant::fromValue(damage);
         }

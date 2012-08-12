@@ -53,3 +53,9 @@ void WrappedCard::setFlags(const QString &flag) const{
     Card::setFlags(flag);
     m_card->setFlags(flag);
 }
+
+void WrappedCard::clearFlags() const{
+    Q_ASSERT(m_card != NULL);
+    Card::clearFlags();
+    m_card->clearFlags();
+}

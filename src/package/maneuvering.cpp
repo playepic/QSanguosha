@@ -182,7 +182,7 @@ public:
                 log.type = "#ArmorNullify";
                 log.arg = objectName();
                 log.arg2 = effect.slash->objectName();
-                player->getRoom()->sendLog(log);
+                room->sendLog(log);
 
                 return true;
             }
@@ -195,7 +195,7 @@ public:
                 log.type = "#ArmorNullify";
                 log.arg = objectName();
                 log.arg2 = effect.card->objectName();
-                player->getRoom()->sendLog(log);
+                room->sendLog(log);
 
                 return true;
             }
@@ -208,7 +208,7 @@ public:
                 log.from = player;
                 log.arg = QString::number(damage.damage);
                 log.arg2 = QString::number(++ damage.damage);
-                player->getRoom()->sendLog(log);
+                room->sendLog(log);
 
                 data = QVariant::fromValue(damage);
             }
@@ -248,7 +248,7 @@ public:
                 log.from = player;
                 log.arg = QString::number(damage.damage);
                 log.arg2 = objectName();
-                player->getRoom()->sendLog(log);
+                room->sendLog(log);
 
                 damage.damage = 1;
                 data = QVariant::fromValue(damage);
@@ -264,7 +264,7 @@ public:
                 if(card->objectName() == objectName()){
                     room->setPlayerFlag(player, "-lion_rec");
                     if (player->isWounded()){
-                        player->getRoom()->setEmotion(player, "armor/silver_lion");
+                        room->setEmotion(player, "armor/silver_lion");
                         RecoverStruct recover;
                         recover.card = card;
                         room->recover(player, recover);

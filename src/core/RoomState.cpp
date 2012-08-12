@@ -24,7 +24,9 @@ void RoomState::resetCard(int cardId)
 {
     Card* newCard = Card::Clone(Sanguosha->getEngineCard(cardId));
     if (newCard == NULL) return;
+    newCard->setFlags(Sanguosha->getCard(cardId)->getFlags());
     m_cards[cardId]->copyEverythingFrom(newCard);
+    m_cards[cardId]->setModified(false);
 }
 
 // Reset all cards, generals' states of the room instance

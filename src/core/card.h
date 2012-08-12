@@ -86,7 +86,7 @@ public:
     virtual void setFlags(const QString &flag) const;
     inline void setFlags(const QStringList &fs) { flags = fs; }
     bool hasFlag(const QString &flag) const;
-    void clearFlags() const;
+    virtual void clearFlags() const;
 
     virtual QString getPackage() const;
     inline virtual QString getClassName() const {return metaObject()->className();}

@@ -70,14 +70,13 @@ public:
         return target != NULL;
     }
 
-    virtual bool trigger(TriggerEvent, Room* room, ServerPlayer *player, QVariant &data) const{
+    virtual bool trigger(TriggerEvent, Room* room, ServerPlayer *, QVariant &data) const{
         CardEffectStruct effect = data.value<CardEffectStruct>();
 
         if(effect.to == effect.from)
             return false;
 
         if(effect.card->getTypeId() == Card::Trick){
-            Room *room = player->getRoom();
 
             if((effect.from && effect.from->hasSkill(objectName()))){
                 LogMessage log;

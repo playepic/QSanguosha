@@ -743,12 +743,12 @@ public:
 class Lihuo: public TriggerSkill{
 public:
     Lihuo():TriggerSkill("lihuo"){
-        events << DamageDone << CardFinished;
+        events << Damage << CardFinished;
         view_as_skill = new LihuoViewAsSkill;
     }
 
     virtual bool trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *player, QVariant &data) const{
-        if(triggerEvent == DamageDone){
+        if(triggerEvent == Damage){
             DamageStruct damage = data.value<DamageStruct>();
             if(damage.card && damage.card->isKindOf("Slash") && damage.card->getSkillName() == objectName())
                 player->tag["Invokelihuo"] = true;

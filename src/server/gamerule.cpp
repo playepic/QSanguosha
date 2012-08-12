@@ -161,9 +161,6 @@ bool GameRule::trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *play
     switch(triggerEvent){
     case TurnStart:{
             player = room->getCurrent();
-            if (player->hasFlag("drank")) {
-                room->setPlayerFlag(player, "-drank");
-            }
             if (!player->faceUp())
                 player->turnOver();
             else if(player->isAlive())

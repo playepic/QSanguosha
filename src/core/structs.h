@@ -46,7 +46,7 @@ struct CardEffectStruct{
 struct SlashEffectStruct{
     SlashEffectStruct();
 
-    const Slash *slash;
+    const Card *slash;
     const Card *jink;
 
     ServerPlayer *from;

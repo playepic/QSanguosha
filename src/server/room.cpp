@@ -2863,7 +2863,7 @@ void Room::drawCards(QList<ServerPlayer*> players, int n, const QString &reason)
             int card_id = drawCard();
             card_ids << card_id;
             const Card *card = Sanguosha->getCard(card_id);
-            player->getRoom()->setCardFlag(card, reason);
+            setCardFlag(card, reason);
 
             QVariant data = QVariant::fromValue(card_id);
             if (thread->trigger(CardDrawing, this, player, data))

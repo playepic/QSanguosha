@@ -419,7 +419,7 @@ public:
 
         case EventPhaseStart:{
                 if(player->isLord() && player->getMark("frantic_over") > 0 && player->getPhase() == Player::Finish)
-                   player->getRoom()->killPlayer(player);
+                   room->killPlayer(player);
                 break;
             }
 
