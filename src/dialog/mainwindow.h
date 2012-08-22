@@ -66,6 +66,7 @@ public:
     MainWindow(QWidget *parent = 0);
     ~MainWindow();
     void setBackgroundBrush(bool center_as_origin);
+    Server *console_server;
 
 protected:
     virtual void closeEvent(QCloseEvent *);

@@ -114,6 +114,7 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(ui->actionMinimize_to_system_tray);
 
     systray = NULL;
+    console_server = NULL;
 }
 
 void MainWindow::restoreFromConfig(){
@@ -374,6 +375,7 @@ void MainWindow::gotoStartScene(){
     addAction(ui->actionMinimize_to_system_tray);
 
     systray = NULL;
+    console_server = NULL;
     delete ClientInstance;
 }
 
@@ -638,6 +640,7 @@ void MainWindow::on_actionPC_Console_Start_triggered()
         QMessageBox::warning(this, tr("Warning"), tr("Can not start server!"));
         return;
     }
+    console_server = server;
 
     server->createNewRoom();
 
