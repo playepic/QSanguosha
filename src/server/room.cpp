@@ -2198,6 +2198,7 @@ void Room::run(){
 
     prepareForStart();
 
+#if 0
     bool using_countdown = true;
     if(_virtual || !property("to_test").toString().isEmpty())
         using_countdown = false;
@@ -2212,6 +2213,7 @@ void Room::run(){
             sleep(1);
         }
     }else
+#endif
         broadcastInvoke("startInXs", "0");
 
     if (scenario && !scenario->generalSelection())
