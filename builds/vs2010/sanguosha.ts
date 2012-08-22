@@ -1729,6 +1729,16 @@
         <translation>视图</translation>
     </message>
     <message>
+        <location filename="../../src/dialog/mainwindow.ui" line="107"/>
+        <source>Abort game</source>
+        <translation>中止单机游戏</translation>
+    </message>
+    <message>
+        <location filename="../../src/dialog/mainwindow.ui" line="108"/>
+        <source>Restart game</source>
+        <translation>重启单机游戏</translation>
+    </message>
+    <message>
         <location filename="../../src/dialog/mainwindow.ui" line="109"/>
         <source>Exit</source>
         <translation>退出</translation>

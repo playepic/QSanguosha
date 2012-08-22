@@ -11,6 +11,7 @@
 #include "halldialog.h"
 #include "pixmapanimation.h"
 #include "record-analysis.h"
+#include "audio.h"
 
 #include <cmath>
 #include <QGraphicsView>
@@ -78,6 +79,8 @@ MainWindow::MainWindow(QWidget *parent)
     connection_dialog = new ConnectionDialog(this);
     connect(ui->actionStart_Game, SIGNAL(triggered()), connection_dialog, SLOT(exec()));
     connect(connection_dialog, SIGNAL(accepted()), this, SLOT(startConnection()));
+    connect(ui->actionAbort_game, SIGNAL(triggered()), this, SLOT(cancelGame()));
+    connect(ui->actionRestart_game, SIGNAL(triggered()), this, SLOT(cancelGame()));
 
     config_dialog = new ConfigDialog(this);
     connect(ui->actionConfigure, SIGNAL(triggered()), config_dialog, SLOT(show()));
@@ -376,7 +379,10 @@ void MainWindow::gotoStartScene(){
 
     systray = NULL;
     console_server = NULL;
-    delete ClientInstance;
+    if(ClientInstance){
+        delete ClientInstance;
+        ClientInstance = NULL;
+    }
 }
 
 void MainWindow::startGameInAnotherInstance(){
@@ -626,6 +632,25 @@ void MainWindow::on_actionAcknowledgement_triggered()
     AcknowledgementScene* ack = new AcknowledgementScene;
     connect(ack,SIGNAL(go_back()),this,SLOT(gotoStartScene()));
     gotoScene(ack);
+}
+
+void MainWindow::cancelGame()
+{
+    if(console_server){
+        QDialog *dialog = qobject_cast<RoomScene *>(scene)->m_choiceDialog;
+#ifdef AUDIO_SUPPORT
+        Audio::stopBGM();
+#endif
+        console_server->gamesOver();
+        if(dialog != NULL && dialog->isVisible()) dialog->hide();
+
+        if(sender()->objectName() == "actionAbort_game"){
+            gotoStartScene();
+        }else{
+            delete ClientInstance;
+            startConnection();
+        }
+    }
 }
 
 void MainWindow::on_actionPC_Console_Start_triggered()

@@ -153,6 +153,7 @@ public:
     void showPromptBox();
     static void FillPlayerNames(QComboBox *ComboBox, bool add_none);
     void updateTable();
+    QDialog *m_choiceDialog; // Dialog for choosing generals, suits, card/equip, or kingdoms
 
 public slots:
     void addPlayer(ClientPlayer *player);
@@ -229,7 +230,6 @@ private:
     Window *prompt_box;
     QGraphicsItem *control_panel;
     QMap<PlayerCardContainer *, const ClientPlayer *> item2player;
-    QDialog *m_choiceDialog; // Dialog for choosing generals, suits, card/equip, or kingdoms
 
     int timer_id;
     int tick;
