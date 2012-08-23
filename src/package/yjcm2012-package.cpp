@@ -129,9 +129,7 @@ int QiceCard::getNumber(QList<int> cardid_list) const{
 }
 
 const Card *QiceCard::validate(const CardUseStruct *card_use) const{
-    Room *room = card_use->from->getRoom();
     card_use->from->setFlags("QiceUsed");
-    room->broadcastSkillInvoke("qice");
     Card *use_card = Sanguosha->cloneCard(user_string, getSuit(this->getSubcards()), getNumber(this->getSubcards()));
     use_card->setSkillName("qice");
     foreach(int id, this->getSubcards())
@@ -446,7 +444,7 @@ public:
 
     virtual int getDrawNum(ServerPlayer *liubiao, int n) const{
         Room *room = liubiao->getRoom();
-        if(room->askForSkillInvoke(liubiao, objectName())){
+        if(liubiao->isWounded() && room->askForSkillInvoke(liubiao, objectName())){
             room->broadcastSkillInvoke(objectName());
             liubiao->clearHistory();
             liubiao->skip(Player::Play);
