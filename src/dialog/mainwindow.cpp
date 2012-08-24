@@ -192,6 +192,7 @@ void MainWindow::on_actionStart_Server_triggered()
 
     server->daemonize();
 
+#if 0
     ui->actionStart_Game->disconnect();
     connect(ui->actionStart_Game, SIGNAL(triggered()), this, SLOT(startGameInAnotherInstance()));
 
@@ -201,6 +202,12 @@ void MainWindow::on_actionStart_Server_triggered()
         if(Config.value("EnableMinimizeDialog", false).toBool())
             this->on_actionMinimize_to_system_tray_triggered();
     }
+#else
+    server->createNewRoom();
+
+    Config.HostAddress = "127.0.0.1";
+    startConnection();
+#endif
 }
 
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod){
