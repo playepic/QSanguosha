@@ -363,7 +363,7 @@ void MainWindow::gotoStartScene(){
         start_scene->addButton(action);
 
     setCentralWidget(view);
-    restoreFromConfig();
+    //restoreFromConfig();
 
     ui->menuCheat->setEnabled(false);
     ui->actionGet_card->disconnect();
