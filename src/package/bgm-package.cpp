@@ -728,20 +728,28 @@ public:
         if(liubei->getPhase() == Player::Draw && liubei->hasFlag("Invoked")){
             room->setPlayerFlag(liubei, "-Invoked");
             ServerPlayer *victim = room->askForPlayerChosen(liubei, victims, "zhaolie");
-            for(int i = 0; i < 3; i++){
-                int card_id = room->drawCard();
-                room->moveCardTo(Sanguosha->getCard(card_id), NULL, NULL, Player::PlaceTable,
-                    CardMoveReason(CardMoveReason::S_REASON_TURNOVER, QString(), QString(), "zhaolie", QString()), true);
-                room->getThread()->delay();
-
+            QList<int> cardIds = room->drawCards(3);
+            Q_ASSERT(cardIds.size() == 3);
+            CardsMoveStruct move;
+            move.card_ids = cardIds;
+            move.to_place = Player::PlaceTable;
+            move.reason = CardMoveReason(CardMoveReason::S_REASON_TURNOVER, QString(), QString(), "zhaolie", QString());
+            room->moveCards(move, true);
+            room->getThread()->delay();
+            for(int i = 0; i < 3; i++)
+            {
+                int card_id = cardIds[i];
                 const Card *card = Sanguosha->getCard(card_id);
-                if(!card->isKindOf("BasicCard") || card->isKindOf("Peach")){
+                if(!card->isKindOf("BasicCard") || card->isKindOf("Peach"))
+                {
                     if(!card->isKindOf("BasicCard")){
                         no_basic++;
                     }
                     CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, QString(), "zhaolie", QString());
                     room->throwCard(Sanguosha->getCard(card_id), reason, NULL);
-                }else{
+                }
+                else
+                {
                     cards << card;
                 }
             }
@@ -1043,10 +1051,32 @@ public:
         return to_select->isBlack();
     }
 
+    virtual bool isEnabledAtPlay(const Player *player) const{
+        return player->getPile("brocade").length() < 4;
+    }
+
     virtual const Card *viewAs(const Card *originalcard) const{
         YinlingCard *card = new YinlingCard;
         card->addSubcard(originalcard);
         return card;
+    }
+};
+
+class YinlingClear: public TriggerSkill{
+public:
+    YinlingClear():TriggerSkill("#yinling-clear"){
+        events << EventLoseSkill;
+    }
+
+    virtual bool triggerable(const ServerPlayer *target) const{
+        return target != NULL;
+    }
+
+    virtual bool trigger(TriggerEvent, Room* , ServerPlayer *player, QVariant &data) const{
+        if (data.toString() != "yinling")
+            return false;
+        player->removePileByName("brocade");
+        return false;
     }
 };
 
@@ -1204,9 +1234,11 @@ BGMPackage::BGMPackage():Package("BGM"){
 
     General *bgm_ganning = new General(this, "bgm_ganning", "qun");
     bgm_ganning->addSkill(new Yinling);
+    bgm_ganning->addSkill(new YinlingClear);
     bgm_ganning->addSkill(new Junwei);
     bgm_ganning->addSkill(new JunweiGot);
     patterns.insert(".junwei", new JunweiPattern);
+    related_skills.insertMulti("yinling", "#yinling-clear");
     related_skills.insertMulti("junwei", "#junwei-got");
 
     addMetaObject<LihunCard>();
