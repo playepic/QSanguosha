@@ -6,7 +6,7 @@
 #include <QFile>
 #include <QMessageBox>
 
-RecAnalysis::RecAnalysis(QString dir){
+RecAnalysis::RecAnalysis(QString dir) : m_recordPlayers(0){
     initialize(dir);
 }
 
@@ -55,6 +55,7 @@ void RecAnalysis::initialize(QString dir){
                 continue;
 
             QStringList texts = rx.capturedTexts();
+            m_recordPlayers = texts.at(2).split("_").first().remove(QRegExp("[^0-9]")).toInt();
             QStringList ban_packages = texts.at(4).split("+");
             foreach(Package *package, Sanguosha->findChildren<Package *>()){
                 if(!ban_packages.contains(package->objectName()) &&
@@ -182,6 +183,8 @@ void RecAnalysis::initialize(QString dir){
     for(; i<role_list.length(); i++){
         getPlayer(role_list.at(i))->m_role = roles_order.at(i);
     }
+
+    setDesignation();
 }
 
 PlayerRecordStruct *RecAnalysis::getPlayerRecord(const Player *player) const{
@@ -235,6 +238,202 @@ PlayerRecordStruct *RecAnalysis::getPlayer(QString object_name, const QString &a
     }
 
     return m_recordMap[object_name];
+}
+
+const bool RecAnalysis::findPlayerOfDamage(int n) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_damage >= n) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfDamaged(int n) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_damaged >= n) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfKills(int n) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_kill >= n) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfRecover(int n) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_recover >= n) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfDamage(int upper, int lower) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_damage >= upper && s->m_damage <= lower) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfDamaged(int upper, int lower) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_damaged >= upper && s->m_damaged <= lower) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfRecover(int upper, int lower) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_recover >= upper && s->m_recover <= lower) return true;
+    }
+
+    return false;
+}
+
+const bool RecAnalysis::findPlayerOfKills(int upper, int lower) const{
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        if(s->m_kill >= upper && s->m_kill <= lower) return true;
+    }
+
+    return false;
+}
+
+void RecAnalysis::setDesignation(){
+    initialDesignation();
+
+    addDesignation(tr("Soy"), ZeroDamage|ZeroRecover);
+    addDesignation(tr("Warrior Soul"), MostDamage);
+    addDesignation(tr("Peaceful Watcher"), ZeroDamage|ZeroDamaged);
+    addDesignation(tr("MVP"), MostDamage|MostDamaged|MostRecover);
+    addDesignation(tr("Useless alive"), ZeroDamage|ZeroDamaged|ZeroRecover|ZeroKill);
+    addDesignation(tr("Fodder"), MostDamaged, true, "~lord", false, true);
+    addDesignation(tr("Bloody Warrior"), MostDamage, true, QString(), true);
+    addDesignation(tr("Awe Prestige"), MostKill|MostDamage, true, "lord", true);
+    addDesignation(tr("Wisely Loyalist"), ZeroDamaged, true, "lord", true, false, true);
+
+    addDesignation(tr("Vanguard"), MostKill, true, "~lord");
+    addDesignation(tr("Fierce Lord"), MostKill, true, "lord");
+    addDesignation(tr("Legatus"), MostDamage, true, "~lord");
+    addDesignation(tr("Frightful Lord"), MostDamage, true, "lord");
+    addDesignation(tr("Blood Judgement"), MostKill, findPlayerOfKills(m_recordPlayers/2));
+    addDesignation(tr("Rampage"), MostKill, findPlayerOfKills(m_recordPlayers-1));
+    addDesignation(tr("Wrath Warlord"), MostDamage, findPlayerOfDamage(15));
+    addDesignation(tr("Peaceful"), MostRecover, findPlayerOfRecover(10));
+    addDesignation(tr("Recovery"), MostRecover, findPlayerOfRecover(5, 9));
+
+    addDesignation(tr("Fire Target"), MostDamaged, findPlayerOfDamaged(10), QString(), false, true);
+    addDesignation(tr("Master Tank"), MostDamaged, findPlayerOfDamaged(10), QString(), true, false, true);
+    addDesignation(tr("War Spirit"), MostDamaged, findPlayerOfDamaged(10), QString(), true, false, false, true);
+    addDesignation(tr("Conspiracy"), ZeroDamaged, true, "renegade", true, false, true);
+    addDesignation(tr("Unrealized Aspiration"), MostKill, true, QString(), false, false, false, true);
+}
+
+void RecAnalysis::addDesignation(const QString &designation,
+                                 unsigned long designation_union,
+                                 bool custom_condition,
+                                 const QString &addition_option_role,
+                                 bool need_alive,
+                                 bool need_dead,
+                                 bool need_win,
+                                 bool need_lose){
+    if(!custom_condition) return;
+
+    QList<DesignationType> des_union;
+    for(long i = ZeroDamaged; i > 0 && designation_union > 0; i/=2){
+        if((unsigned long)i <= designation_union){
+            des_union <<  static_cast<DesignationType>(i);
+            designation_union -= (unsigned long)i;
+        }
+    }
+
+    foreach(QString objectName, m_recordMap.keys()){
+        bool has_player = custom_condition;
+        foreach(DesignationType type, des_union){
+            if(!m_recordMap[objectName]->m_designEnum.contains(type)){ has_player = false; break; }
+            if(need_win &&
+                    !(m_recordWinners.contains(m_recordMap[objectName]->m_role) ||
+                    m_recordWinners.contains(objectName))){
+                has_player = false;
+                break;
+            }
+
+            if(need_lose &&
+                    (m_recordWinners.contains(m_recordMap[objectName]->m_role) ||
+                    m_recordWinners.contains(objectName))){
+                has_player = false;
+                break;
+            }
+        }
+
+        if(!has_player) continue;
+
+        if(!addition_option_role.isEmpty()){
+            if(addition_option_role.startsWith("~")){
+                QString role = addition_option_role;
+                role.remove("~");
+                has_player &= m_recordMap[objectName]->m_role != role;
+            }
+            else
+                has_player &= m_recordMap[objectName]->m_role == addition_option_role;
+        }
+        if(need_alive)
+            has_player &= m_recordMap[objectName]->m_isAlive;
+        if(need_dead)
+            has_player &= !m_recordMap[objectName]->m_isAlive;
+
+        if(has_player){
+            m_recordMap[objectName]->m_designation << designation;
+            break;
+        }
+    }
+}
+
+void RecAnalysis::initialDesignation(){
+    int max_damage = 0, max_damaged = 0, max_recover = 0, max_kill = 0;
+    int least_damage = 99, least_damaged = 99, least_recover = 99, least_kill = 99;
+    QStringList maxDamagePlayer, maxDamagedPlayer, maxRecoverPlayer, maxKillPlayer;
+    QStringList leastDamagePlayer, leastDamagedPlayer, leastRecoverPlayer, leastKillPlayer;
+
+    foreach(PlayerRecordStruct *s, m_recordMap.values()){
+        QString objectName =  m_recordMap.key(s);
+        if(s->m_damage > max_damage) { max_damage = s->m_damage; maxDamagePlayer.clear(); maxDamagePlayer << objectName; }
+        else if(s->m_damage == max_damage) { maxDamagePlayer << objectName;}
+        if(s->m_damaged > max_damaged) { max_damaged = s->m_damaged; maxDamagedPlayer.clear(); maxDamagedPlayer << objectName; }
+        else if(s->m_damaged == max_damaged) { maxDamagedPlayer << objectName;}
+        if(s->m_recover > max_recover) { max_recover = s->m_recover; maxRecoverPlayer.clear(); maxRecoverPlayer << objectName; }
+        else if(s->m_recover == max_recover) { maxRecoverPlayer << objectName;}
+        if(s->m_kill > max_kill) { max_kill = s->m_kill; maxKillPlayer.clear(); maxKillPlayer << objectName; }
+        else if(s->m_kill == max_kill) { maxKillPlayer << objectName;}
+
+        if(s->m_damage < least_damage) { least_damage = s->m_damage; leastDamagePlayer.clear(); leastDamagePlayer << objectName; }
+        else if(s->m_damage == least_damage) { leastDamagePlayer << objectName;}
+        if(s->m_damaged < least_damaged) { least_damaged = s->m_damaged; leastDamagedPlayer.clear(); leastDamagedPlayer << objectName; }
+        else if(s->m_damaged == least_damaged) { leastDamagedPlayer << objectName;}
+        if(s->m_recover < least_recover) { least_recover = s->m_recover; leastRecoverPlayer.clear(); leastRecoverPlayer << objectName; }
+        else if(s->m_recover == least_recover) { leastRecoverPlayer << objectName;}
+        if(s->m_kill < least_kill) { least_kill = s->m_kill; leastKillPlayer.clear(); leastKillPlayer << objectName; }
+        else if(s->m_kill == least_kill) { leastKillPlayer << objectName;}
+
+        if(s->m_damage == 0) s->m_designEnum << ZeroDamage;
+        if(s->m_damaged == 0) s->m_designEnum << ZeroDamaged;
+        if(s->m_recover == 0) s->m_designEnum << ZeroRecover;
+        if(s->m_kill == 0) s->m_designEnum << ZeroKill;
+    }
+
+    foreach(QString player, maxDamagedPlayer) m_recordMap[player]->m_designEnum << MostDamaged;
+    foreach(QString player, maxDamagePlayer) m_recordMap[player]->m_designEnum << MostDamage;
+    foreach(QString player, maxRecoverPlayer) m_recordMap[player]->m_designEnum << MostRecover;
+    foreach(QString player, maxKillPlayer) m_recordMap[player]->m_designEnum << MostKill;
+    foreach(QString player, leastDamagedPlayer) m_recordMap[player]->m_designEnum << LeastDamaged;
+    foreach(QString player, leastDamagePlayer) m_recordMap[player]->m_designEnum << LeastDamage;
+    foreach(QString player, leastRecoverPlayer) m_recordMap[player]->m_designEnum << LeastRecover;
+    foreach(QString player, leastKillPlayer) m_recordMap[player]->m_designEnum << LeastKill;
 }
 
 PlayerRecordStruct::PlayerRecordStruct()
