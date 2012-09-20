@@ -150,6 +150,10 @@ public:
     Kuiwei(): TriggerSkill("kuiwei"){
         events << EventPhaseStart;
     }
+	
+    virtual bool triggerable(const ServerPlayer *target) const{
+        return target && target->isAlive() && (target->hasSkill(objectName()) || target->getMark("@kuiwei")>0);
+    }
 
     virtual int getPriority() const{
         return 3;
@@ -166,7 +170,7 @@ public:
     }
 
     virtual bool trigger(TriggerEvent, Room* room, ServerPlayer *caoren, QVariant &) const{
-        if(caoren->getPhase() == Player::Finish){
+        if(caoren->hasSkill(objectName()) && caoren->getPhase() == Player::Finish){
             if(!caoren->askForSkillInvoke(objectName()))
                 return false;
 
@@ -751,7 +755,7 @@ public:
             CardsMoveStruct move;
             move.card_ids = cardIds;
             move.to_place = Player::PlaceTable;
-            move.reason = CardMoveReason(CardMoveReason::S_REASON_TURNOVER, QString(), QString(), "zhaolie", QString());
+            move.reason = CardMoveReason(CardMoveReason::S_REASON_TURNOVER, liubei->objectName(), QString(), "zhaolie", QString());
             room->moveCards(move, true);
             room->getThread()->delay();
             for(int i = 0; i < 3; i++)

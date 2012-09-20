@@ -417,16 +417,6 @@ public:
         if(card){
             room->setEmotion(effect.to, "weapon/axe");
 
-            QList<int> card_ids = card->getSubcards();
-            foreach(int card_id, card_ids){
-                LogMessage log;
-                log.type = "$DiscardCard";
-                log.from = player;
-                log.card_str = QString::number(card_id);
-
-                room->sendLog(log);
-            }
-
             LogMessage log;
             log.type = "#AxeSkill";
             log.from = player;
@@ -486,9 +476,9 @@ public:
                 horse_type = horses.first();
 
             if(horse_type == "dhorse")
-                room->throwCard(damage.to->getDefensiveHorse(), damage.to);
+                room->throwCard(damage.to->getDefensiveHorse(), damage.to, damage.from);
             else if(horse_type == "ohorse")
-                room->throwCard(damage.to->getOffensiveHorse(), damage.to);
+                room->throwCard(damage.to->getOffensiveHorse(), damage.to, damage.from);
         }
 
         return false;
@@ -782,6 +772,12 @@ void Collateral::onEffect(const CardEffectStruct &effect) const{
     ServerPlayer *victim = room->getTag("collateralVictim").value<PlayerStar>();
     room->removeTag("collateralVictim");
 
+    LogMessage log;
+    log.type = "#CollateralSlash";
+    log.from = source;
+    log.to << victim;
+    room->sendLog(log);
+
     WrappedCard *weapon = killer->getWeapon();
     if(weapon == NULL || victim == NULL)
         return;
@@ -1055,19 +1051,13 @@ public:
 
         if(damage.card && damage.card->isKindOf("Slash") && !damage.to->isNude()
             && !damage.chain && !damage.transfer && player->askForSkillInvoke("IceSword", data)){
-            room->setEmotion(player,"weapon/ice_sword");
-                int card_id = room->askForCardChosen(player, damage.to, "he", "IceSword");
-                CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, damage.to->objectName());
-                reason.m_playerId = damage.from->objectName();
-                reason.m_targetId = damage.to->objectName();
-                room->moveCardTo(Sanguosha->getCard(card_id), NULL, NULL, Player::DiscardPile, reason);
+                room->setEmotion(player, "weapon/ice_sword");
+                int card_id = room->askForCardChosen(player, damage.to, "he", "ice_sword");
+                room->throwCard(Sanguosha->getCard(card_id), damage.to, damage.from);
 
                 if(!damage.to->isNude()){
-                    card_id = room->askForCardChosen(player, damage.to, "he", "IceSword");
-                    CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, damage.to->objectName());
-                    reason.m_playerId = damage.from->objectName();
-                    reason.m_targetId = damage.to->objectName();
-                    room->moveCardTo(Sanguosha->getCard(card_id), NULL, NULL, Player::DiscardPile, reason);
+                    card_id = room->askForCardChosen(player, damage.to, "he", "ice_sword");
+                    room->throwCard(Sanguosha->getCard(card_id), damage.to, damage.from);
                 }
 
                 return true;
@@ -1298,4 +1288,4 @@ StandardExCardPackage::StandardExCardPackage()
 }
 
 ADD_PACKAGE(StandardCard)
-    ADD_PACKAGE(StandardExCard)
+ADD_PACKAGE(StandardExCard)

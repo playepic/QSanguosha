@@ -147,7 +147,7 @@ public:
         }else if(triggerEvent == DamageComplete){
             bool faceup = player->tag.value("PredamagedFace", true).toBool();
             player->tag.remove("PredamagedFace");
-            if(!faceup && player->askForSkillInvoke("jiushi", data)){
+            if(!faceup && !player->faceUp() && player->askForSkillInvoke("jiushi", data)){
                 room->broadcastSkillInvoke("jiushi", 3);
                 player->turnOver();
             }
@@ -305,12 +305,14 @@ public:
             if(!source || source == player) return false;
             int x = damage.damage, i;
             for(i = 0; i < x; i++) {
-                if (room->askForSkillInvoke(player,objectName(),data)){
+                if (room->askForSkillInvoke(player, objectName(), data)){
                     room->broadcastSkillInvoke(objectName(), qrand() % 2 + 3);
-                    //fix this!
-                    const Card *card = room->askForCard(source, ".", "@enyuan", QVariant(), NonTrigger);
+                    const Card *card = room->askForExchange(source, objectName(), 1, false, "EnyuanGive", true);
                     if(card){
-                        player->obtainCard(card);
+                        CardMoveReason reason(CardMoveReason::S_REASON_GIVE, source->objectName(),
+                                              player->objectName(), objectName(), QString());
+                        reason.m_playerId = player->objectName();
+                        room->moveCardTo(card, source, player, Player::PlaceHand, reason);
                     }else{
                         room->loseHp(source);
                     }
@@ -353,6 +355,12 @@ void XuanhuoCard::onEffect(const CardEffectStruct &effect) const{
                 targets << victim;
         }
         victim = room->askForPlayerChosen(effect.from, targets, "xuanhuo");
+
+        LogMessage log;
+        log.type = "#CollateralSlash";
+        log.from = effect.from;
+        log.to << victim;
+        room->sendLog(log);
 
         QString prompt = QString("xuanhuo-slash:%1:%2")
                 .arg(effect.from->objectName()).arg(victim->objectName());
@@ -493,7 +501,7 @@ void XuanfengCard::use(Room *room, ServerPlayer *lingtong, QList<ServerPlayer *>
         while(map[sp] > 0){
             if(!sp->isNude()){
                 int card_id = room->askForCardChosen(lingtong, sp, "he", "xuanfeng");
-                room->throwCard(card_id, sp);
+                room->throwCard(card_id, sp, lingtong);
             }
             map[sp]--;
         }

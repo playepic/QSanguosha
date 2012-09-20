@@ -321,7 +321,7 @@ public:
 
     virtual bool trigger(TriggerEvent , Room *room, ServerPlayer *liaohua, QVariant &data) const{
         PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        if(change.to == Player::Start){
+        if(change.to == Player::Start && change.from != Player::Play){
             room->broadcastSkillInvoke(objectName());
             LogMessage log;
             log.type = "#TriggerSkill";
@@ -329,8 +329,9 @@ public:
             log.arg = objectName();
             room->sendLog(log);
 
+            change.to = Player::Play;
+            data = QVariant::fromValue(change);
             liaohua->insertPhase(Player::Play);
-            return true;
         }
         return false;
     }
@@ -390,7 +391,7 @@ public:
                 CardsMoveStruct move, move2;
                 move.card_ids.append(card1);
                 move.card_ids.append(card2);
-                move.reason = CardMoveReason(CardMoveReason::S_REASON_TURNOVER, shuangying->getGeneralName(), "fuhun", QString());
+                move.reason = CardMoveReason(CardMoveReason::S_REASON_TURNOVER, shuangying->objectName(), "fuhun", QString());
                 move.to_place = Player::PlaceTable;
                 room->moveCardsAtomic(move, true);
                 room->getThread()->delay();

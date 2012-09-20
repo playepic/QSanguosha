@@ -557,6 +557,7 @@ enum TriggerEvent{
     HpLost,
     HpChanged,
     MaxHpChanged,
+    PostHpReduced,
 
     EventLoseSkill,
     EventAcquireSkill,
@@ -576,7 +577,6 @@ enum TriggerEvent{
     DamageInflicted,  // the moment for -- tianxiang..
     PreHpReduced,     // the moment before Hpreduce
     DamageDone,       // it's time to do the damage
-    PostHpReduced,    // the moment after Hpreduce
     Damage,           // the moment for -- lieren..
     Damaged,          // the moment for -- yiji..
     DamageComplete,   // the moment for trigger iron chain
@@ -1024,9 +1024,9 @@ public:
     void obtainCard(ServerPlayer *target, const Card *card, bool unhide = true);
     void obtainCard(ServerPlayer *target, int card_id, bool unhide = true);
 
-    void throwCard(int card_id, ServerPlayer *who);
-    void throwCard(const Card *card, ServerPlayer *who);    
-    void throwCard(const Card *card, const CardMoveReason &reason, ServerPlayer *who);
+    void throwCard(int card_id, ServerPlayer *who, ServerPlayer *thrower = NULL);
+    void throwCard(const Card *card, ServerPlayer *who, ServerPlayer *thrower = NULL);    
+    void throwCard(const Card *card, const CardMoveReason &reason, ServerPlayer *who, ServerPlayer *thrower = NULL);
     
     void moveCardTo(const Card* card, ServerPlayer* dstPlayer, Player::Place dstPlace,
                     bool forceMoveVisible = false);
@@ -1049,7 +1049,8 @@ public:
     QString askForChoice(ServerPlayer *player, const char *skill_name, const char *choices, const QVariant &data = QVariant());
     bool askForDiscard(ServerPlayer *target, const char *reason, int discard_num, int min_num,
             bool optional = false, bool include_equip = false, const char *prompt = NULL);
-    const Card *askForExchange(ServerPlayer *player, const char *reason, int discard_num, bool include_equip = false, const char *prompt = NULL);
+    const Card *askForExchange(ServerPlayer *player, const char *reason, int discard_num, bool include_equip = false,
+            const char *prompt = NULL, bool optional = false);
     bool askForNullification(const TrickCard *trick, ServerPlayer *from, ServerPlayer *to, bool positive);
     bool isCanceled(const CardEffectStruct &effect);
     int askForCardChosen(ServerPlayer *player, ServerPlayer *who, const char *flags, const char *reason);

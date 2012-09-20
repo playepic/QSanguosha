@@ -1724,9 +1724,6 @@ QString RoomScene::_translateMovement(const CardsMoveStruct &move)
         }
     }
     return result;
-
-    //QString("%1:%2:%3:%4").arg(movement.reason.m_reason)
-    //            .arg(movement.reason.m_skillName).arg(movement.reason.m_eventName
 }
 
 void RoomScene::keepLoseCardLog(const CardsMoveStruct &move)
@@ -1825,6 +1822,22 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct &move)
         foreach(int card_id, move.card_ids)
             log_box->appendLog(type, to_general, QStringList(), QString::number(card_id));
     }
+    if (move.reason.m_reason == CardMoveReason::S_REASON_TURNOVER) {
+        QString type = "$TurnOver";
+        Photo *srcphoto = name2photo[move.reason.m_playerId];
+        QString to_general;
+        if (srcphoto != NULL)
+            to_general = srcphoto->getPlayer()->getGeneralName();
+        else if (move.reason.m_playerId == Self->objectName())
+            to_general = Self->getGeneralName();
+        QString card_str = QString();
+        foreach(int card_id, move.card_ids)
+            if(card_str.isEmpty())
+                card_str = QString::number(card_id);
+            else
+                card_str += "+" + QString::number(card_id);
+        log_box->appendLog(type, to_general, QStringList(), card_str);
+    }
 }
 
 inline uint qHash(const QPointF p) { return qHash((int)p.x()+(int)p.y()); }
@@ -1875,7 +1888,10 @@ void RoomScene::acquireSkill(const ClientPlayer *player, const QString &skill_na
 void RoomScene::updateSkillButtons(){
     foreach(const Skill* skill, Self->getVisibleSkillList()){
         if(skill->isLordSkill()){
-            if(Self->getRole() != "lord" || ServerInfo.GameMode == "06_3v3")
+            if(Self->getRole() != "lord"
+               || ServerInfo.GameMode == "06_3v3"
+               || ServerInfo.GameMode == "02_1v1"
+               || Config.value("WithoutLordskill", false).toBool())
                 continue;
         }
 
@@ -2809,6 +2825,8 @@ DamageMakerDialog::DamageMakerDialog(QWidget *parent)
     damage_nature->addItem(tr("Fire"), S_CHEAT_FIRE_DAMAGE);
     damage_nature->addItem(tr("HP recover"), S_CHEAT_HP_RECOVER);
     damage_nature->addItem(tr("Lose HP"), S_CHEAT_HP_LOSE);
+    damage_nature->addItem(tr("Lose Max HP"), S_CHEAT_MAX_HP_LOSE);
+    damage_nature->addItem(tr("Reset Max HP"), S_CHEAT_MAX_HP_RESET);
 
     damage_point = new QSpinBox;
     damage_point->setRange(1, 1000);
@@ -2891,7 +2909,7 @@ void RoomScene::makeReviving(){
     }
 
     QStringList items;
-    QList<const ClientPlayer*> victims;;
+    QList<const ClientPlayer*> victims;
     foreach(const ClientPlayer *player, ClientInstance->getPlayers()){
         if(player->isDead()){
             QString general_name = Sanguosha->translate(player->getGeneralName());
@@ -2992,7 +3010,7 @@ void RoomScene::fillTable(QTableWidget *table, const QList<const ClientPlayer *>
         table->setItem(i, 7, item);
 
         item = new QTableWidgetItem;
-        item->setText(Sanguosha->translate(rec->m_designation.join(", ")));
+        item->setText(rec->m_designation.join(", "));
         table->setItem(i, 8, item);
     }
 
