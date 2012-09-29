@@ -446,10 +446,11 @@ public:
     virtual int getDrawNum(ServerPlayer *liubiao, int n) const{
         Room *room = liubiao->getRoom();
         if(liubiao->isWounded() && room->askForSkillInvoke(liubiao, objectName())){
-            room->broadcastSkillInvoke(objectName());
+            int losthp = liubiao->getLostHp();
+            room->broadcastSkillInvoke(objectName(), qMin(3, losthp));
             liubiao->clearHistory();
             liubiao->skip(Player::Play);
-            return n + liubiao->getLostHp();
+            return n + losthp;
         }else
             return n;
     }
@@ -491,7 +492,13 @@ public:
         if(damage.card && damage.card->isKindOf("Slash") &&
                 (damage.card->isRed() || damage.card->hasFlag("drank"))){
 
-            room->broadcastSkillInvoke(objectName());
+            int index = 1;
+            if (damage.from->getGeneralName().contains("guanyu"))
+                index = 3;
+            else if (damage.card->hasFlag("drank"))
+                index = 2;
+            room->broadcastSkillInvoke(objectName(), index);
+			
             LogMessage log;
             log.type = "#TriggerSkill";
             log.from = player;
@@ -563,7 +570,7 @@ public:
                     break;
                 }
 
-                if(dying.who->getHp() > 0 || handang->isNude() || current->isDead() || !handang->canSlash(current, false))
+                if(dying.who->getHp() > 0 || handang->isNude() || current->isDead() || !handang->canSlash(current, NULL, false))
                     break;
 
                 room->setPlayerFlag(handang, "jiefanUsed");
@@ -633,6 +640,7 @@ public:
 
 AnxuCard::AnxuCard(){
     once = true;
+    mute = true;
 }
 
 bool AnxuCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const{
@@ -654,10 +662,16 @@ void AnxuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targ
     QList<ServerPlayer *> selecteds = targets;
     ServerPlayer *from = selecteds.first()->getHandcardNum() < selecteds.last()->getHandcardNum() ? selecteds.takeFirst() : selecteds.takeLast();
     ServerPlayer *to = selecteds.takeFirst();
+    if (to->getGeneralName().contains("sunquan"))
+        room->broadcastSkillInvoke("anxu", 2);
+    else
+        room->broadcastSkillInvoke("anxu", 1);
     int id = room->askForCardChosen(from, to, "h", "anxu");
     const Card *cd = Sanguosha->getCard(id);
     CardMoveReason reason(CardMoveReason::S_REASON_GIVE, source->objectName());
     room->obtainCard(from, cd, reason);
+    if (room->getCardOwner(id) == from)
+        room->showCard(from, id);
     if(cd->getSuit() != Card::Spade){
         source->drawCards(1);
     }
@@ -685,7 +699,7 @@ protected:
 class Zhuiyi: public TriggerSkill{
 public:
     Zhuiyi():TriggerSkill("zhuiyi"){
-        events << Death ;
+        events << Death;
     }
 
     virtual bool triggerable(const ServerPlayer *target) const{
@@ -702,7 +716,10 @@ public:
 
         ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName());
 
-        room->broadcastSkillInvoke(objectName());
+        if (target->getGeneralName().contains("sunquan"))
+            room->broadcastSkillInvoke(objectName(), 2);
+        else
+            room->broadcastSkillInvoke(objectName(), 1);
         target->drawCards(3);
         RecoverStruct recover;
         recover.who = target;
