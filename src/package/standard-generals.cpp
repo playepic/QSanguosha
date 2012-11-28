@@ -3,7 +3,6 @@
 #include "skill.h"
 #include "engine.h"
 #include "client.h"
-#include "carditem.h"
 #include "serverplayer.h"
 #include "room.h"
 #include "standard-skillcards.h"
@@ -859,7 +858,7 @@ public:
                 if (zhouyu->hasSkill("mouduan"))
                     index += 2;
                 else if (zhouyu->hasSkill("hunzi"))
-                    index += 4;
+                    index = 5;
             }
 
             room->broadcastSkillInvoke(objectName(), index);
@@ -1480,7 +1479,7 @@ public:
         }
 
 
-        return false;		
+        return false;        
     }
 };
 
@@ -1612,9 +1611,9 @@ public:
                     break;
                 }
             }
-        }        	
+        }            
 
-        return false;		
+        return false;        
     }
 };
 

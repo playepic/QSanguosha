@@ -1,5 +1,6 @@
 #include "scenario.h"
 #include "skill.h"
+#include "maneuvering.h"
 #include "guandu-scenario.h"
 #include "clientplayer.h"
 #include "client.h"
@@ -14,37 +15,40 @@ bool ZhanShuangxiongCard::targetFilter(const QList<const Player *> &targets, con
 }
 
 void ZhanShuangxiongCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const{
-    ServerPlayer *shuangxiong = targets.first();
-
-    DamageStruct damage;
-    damage.from = source;
-    damage.to = shuangxiong;
-
-    bool success = source->pindian(shuangxiong, "zhanshuangxiong");
-    if(!success)
-        qSwap(damage.from, damage.to);
-
-    room->damage(damage);
-
     room->setTag("ZhanShuangxiong", true);
+    source->pindian(targets.first(), "zhanshuangxiong");
 }
 
 class GreatYiji: public MasochismSkill{
 public:
     GreatYiji():MasochismSkill("greatyiji"){
-        frequency = Compulsory;
+        frequency = Frequent;
     }
 
     virtual void onDamaged(ServerPlayer *guojia, const DamageStruct &damage) const{
         Room *room = guojia->getRoom();
+        int x = damage.damage, i;
+        for(i = 0; i < x; i++)
+        {
+            if (!room->askForSkillInvoke(guojia, objectName()))
+                return;
+            room->broadcastSkillInvoke("yiji");
+            QList<int> yiji_cards;
+            yiji_cards.append(room->drawCard());
+            yiji_cards.append(room->drawCard());
+            yiji_cards.append(room->drawCard());
+            CardsMoveStruct move;
+            move.card_ids = yiji_cards;
+            move.to = guojia;
+            move.to_place = Player::PlaceHand;
+            move.reason = CardMoveReason(CardMoveReason::S_REASON_PREVIEW, guojia->objectName(), "greatyiji", QString());
+            room->moveCardsAtomic(move, false);
 
-        room->broadcastSkillInvoke(objectName());
-        int n = damage.damage * 3;
-        guojia->drawCards(n);
-        QList<int> yiji_cards = guojia->handCards().mid(guojia->getHandcardNum() - n);
+            if(yiji_cards.isEmpty())
+                continue;
 
-        while(room->askForYiji(guojia, yiji_cards))
-            ; // empty loop
+            while(room->askForYiji(guojia, yiji_cards)) {}
+        }
     }
 };
 
@@ -65,9 +69,9 @@ public:
     }
 };
 
-class ZhanShuangxiong: public ZeroCardViewAsSkill{
+class ZhanShuangxiongViewAsSkill: public ZeroCardViewAsSkill{
 public:
-    ZhanShuangxiong():ZeroCardViewAsSkill("zhanshuangxiong"){
+    ZhanShuangxiongViewAsSkill():ZeroCardViewAsSkill("zhanshuangxiong"){
     }
 
     virtual bool isEnabledAtPlay(const Player *player) const{
@@ -76,6 +80,35 @@ public:
 
     virtual const Card *viewAs() const{
         return new ZhanShuangxiongCard();
+    }
+};
+
+class ZhanShuangxiong: public TriggerSkill{
+public:
+    ZhanShuangxiong(): TriggerSkill("zhanshuangxiong") {
+        events << Pindian;
+        view_as_skill = new ZhanShuangxiongViewAsSkill;
+    }
+
+    virtual bool triggerable(const ServerPlayer *target) const{
+        return target != NULL;
+    }
+
+    virtual bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const{
+        PindianStar pindian = data.value<PindianStar>();
+        if (pindian->reason != objectName())
+            return false;
+        if (pindian->from_card->getNumber() == pindian->to_card->getNumber())
+            return false;
+
+        ServerPlayer *winner = pindian->isSuccess() ? pindian->from : pindian->to;
+        ServerPlayer *loser = pindian->isSuccess() ? pindian->to : pindian->from;
+        DamageStruct damage;
+        damage.from = winner;
+        damage.to = loser;
+        room->damage(damage);
+
+        return false;
     }
 };
 
@@ -123,10 +156,6 @@ public:
         view_as_skill = new SmallTuxiViewAsSkill;
     }
 
-    virtual int getPriority() const{
-        return 2;
-    }
-
     virtual bool triggerable(const ServerPlayer *target) const{
         return target != NULL && target->getGeneralName() == "zhangliao"
                 && ! target->getRoom()->getTag("BurnWuchao").toBool();
@@ -144,10 +173,8 @@ public:
                 }
             }
 
-            if(!can_invoke || !room->askForUseCard(zhangliao, "@@smalltuxi", "@smalltuxi-card"))
-                zhangliao->drawCards(1, false);
-
-            return true;
+            if(can_invoke && room->askForUseCard(zhangliao, "@@smalltuxi", "@smalltuxi-card"))
+                return true;
         }
 
         return false;
@@ -159,7 +186,7 @@ public:
     GuanduRule(Scenario *scenario)
         :ScenarioRule(scenario)
     {
-        events << GameStart << EventPhaseStart << Damaged << GameOverJudge;
+        events << GameStart << DrawNCards << Damaged << GameOverJudge;
     }
 
     virtual bool trigger(TriggerEvent triggerEvent, Room* room, ServerPlayer *player, QVariant &data) const{
@@ -190,14 +217,13 @@ public:
             break;
                        }
 
-        case EventPhaseStart:{
+        case DrawNCards:{
                 if(player->getPhase() == Player::Draw){
                     bool burned = room->getTag("BurnWuchao").toBool();
                     if(!burned){
                         QString name = player->getGeneralName();
                         if(name == "caocao" || name == "guojia" || name == "guanyu"){
-                            player->drawCards(1, false);
-                            return true;
+                            data = data.toInt() - 1;
                         }
                     }
                 }
@@ -228,7 +254,14 @@ public:
                             break;
                         }
 
-                        room->moveCardTo(Sanguosha->getCard(card_id), to, Player::PlaceDelayedTrick, true);
+                        const Card *originalCard = Sanguosha->getCard(card_id);
+                        SupplyShortage *shortage = new SupplyShortage(originalCard->getSuit(), originalCard->getNumber());
+                        shortage->setSkillName("duanliang");
+                        WrappedCard *card = Sanguosha->getWrappedCard(originalCard->getId());
+                        card->takeOver(shortage);
+                        room->broadcastUpdateCard(room->getPlayers(), card->getId(), card);
+                        room->moveCardTo(card, to, Player::PlaceDelayedTrick, true);
+                        shortage->deleteLater();
                     }
                 }
 
@@ -300,6 +333,7 @@ void GuanduScenario::onTagSet(Room *room, const QString &key) const{
     if(zhanshuangxiong && burnwuchao){
         ServerPlayer *guojia = room->findPlayer("guojia");
         if(guojia && !guojia->hasSkill("greatyiji")){
+            room->detachSkillFromPlayer(guojia, "yiji");
             room->acquireSkill(guojia, "greatyiji");
             room->acquireSkill(guojia, "damagebeforeplay", false);
         }

@@ -437,7 +437,7 @@ SkillCard *Engine::cloneSkillCard(const QString &name) const{
 }
 
 QString Engine::getVersionNumber() const{
-    return "20120926";
+    return "20121111";
 }
 
 QString Engine::getVersion() const{
@@ -525,6 +525,8 @@ QString Engine::getSetupString() const{
         flags.append("2");
     else if(Config.MaxHpScheme == 3)
         flags.append("3");
+    else if(Config.MaxHpScheme == 4)
+        flags.append("4");
 
     QString server_name = Config.ServerName.toUtf8().toBase64();
     QStringList setup_items;

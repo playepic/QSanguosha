@@ -2,7 +2,6 @@
 #include "standard.h"
 #include "maneuvering.h"
 #include "clientplayer.h"
-#include "carditem.h"
 #include "engine.h"
 #include "ai.h"
 #include "general.h"
@@ -22,7 +21,7 @@ public:
         SlashEffectStruct effect = data.value<SlashEffectStruct>();
 
         if(effect.slash->isBlack()){
-            player->getRoom()->broadcastSkillInvoke(objectName());
+            room->broadcastSkillInvoke(objectName());
 
             LogMessage log;
             log.type = "#SkillNullify";
@@ -30,7 +29,7 @@ public:
             log.arg = objectName();
             log.arg2 = effect.slash->objectName();
 
-            player->getRoom()->sendLog(log);
+            room->sendLog(log);
 
             return true;
         }
@@ -339,6 +338,8 @@ bool XuanhuoCard::targetFilter(const QList<const Player *> &targets, const Playe
 void XuanhuoCard::onEffect(const CardEffectStruct &effect) const{
     Room *room = effect.from->getRoom();
     room->drawCards(effect.to,2);
+    if (!effect.from->isAlive() || !effect.to->isAlive())
+        return;
 
     bool can_use = false;
     foreach(ServerPlayer *p, room->getOtherPlayers(effect.to)){
@@ -735,44 +736,48 @@ MingceCard::MingceCard(){
 }
 
 void MingceCard::onEffect(const CardEffectStruct &effect) const{
-    effect.to->obtainCard(this);
-
     Room *room = effect.to->getRoom();
-    QString choice;
     bool can_use = false;
+    QList <ServerPlayer *> targets;
     foreach(ServerPlayer *p, room->getOtherPlayers(effect.to)){
         if (effect.to->canSlash(p)){
+            targets << p;
             can_use = true;
-            break;
         }
     }
-    if (can_use){
-        choice = room->askForChoice(effect.to, "mingce", "use+draw");
+
+    ServerPlayer *target;
+    QStringList choicelist;
+    choicelist << "draw";
+    if (can_use && effect.from->isAlive()){
+        target = room->askForPlayerChosen(effect.from, targets, "mingce");
+
+        LogMessage log;
+        log.type = "#CollateralSlash";
+        log.from = effect.from;
+        log.to << target;
+        room->sendLog(log);
+
+        choicelist << "use";
     }
+
+    effect.to->obtainCard(this);
+    QString choice;
+    if (choicelist.length() > 1)
+        choice = room->askForChoice(effect.to, "mingce", choicelist.join("+"));
     else
-        choice = "draw";
+        choice = choicelist.first();    
 
-    if(choice == "use"){
-        QList<ServerPlayer *> players = room->getOtherPlayers(effect.to), targets;
-        foreach(ServerPlayer *player, players){
-            if(effect.to->canSlash(player))
-                targets << player;
-        }
-
-        if(!targets.isEmpty()){
-            ServerPlayer *target = room->askForPlayerChosen(effect.from, targets, "mingce");
-
-            Slash *slash = new Slash(Card::NoSuit, 0);
-            slash->setSkillName("mingce");
-            CardUseStruct card_use;
-            card_use.from = effect.to;
-            card_use.to << target;
-            card_use.card = slash;
-            room->useCard(card_use, false);
-        }
-    }else if(choice == "draw"){
-        room->broadcastSkillInvoke("mingce", 1);
-        effect.to->drawCards(1, true);
+    if (choice == "use") {
+        Slash *slash = new Slash(Card::NoSuit, 0);
+        slash->setSkillName("mingce");
+        CardUseStruct card_use;
+        card_use.from = effect.to;
+        card_use.to << target;
+        card_use.card = slash;
+        room->useCard(card_use, false);
+    } else if(choice == "draw") {
+        effect.to->drawCards(1);
     }
 }
 
@@ -800,9 +805,9 @@ public:
 
     virtual int getEffectIndex(const ServerPlayer *, const Card *card) const{
         if (card->isKindOf("Slash"))
-            return 2;
+            return -2;
         else
-            return 0;
+            return -1;
     }
 };
 
@@ -1152,6 +1157,7 @@ public:
 };
 
 PaiyiCard::PaiyiCard(){
+    mute = true;
     once = true;
 }
 
@@ -1169,12 +1175,19 @@ void PaiyiCard::onUse(Room *room, const CardUseStruct &card_use) const{
     if(powers.isEmpty())
         return ;
 
+    LogMessage log;
+    log.from = zhonghui;
+    log.to = card_use.to;
+    log.type = "#UseCard";
+    log.card_str = toString();
+    room->sendLog(log);
+
     int card_id;
     if(powers.length() == 1)
         card_id = powers.first();
     else{
         room->fillAG(powers, zhonghui);
-        card_id = room->askForAG(zhonghui, powers, true, "paiyi");
+        card_id = room->askForAG(zhonghui, powers, false, "paiyi");
         zhonghui->invoke("clearAG");
 
         if(card_id == -1)
@@ -1182,14 +1195,14 @@ void PaiyiCard::onUse(Room *room, const CardUseStruct &card_use) const{
     }
 
     if(target==zhonghui)
-        room->broadcastSkillInvoke(objectName(),1);
+        room->broadcastSkillInvoke("paiyi", 1);
     else
-        room->broadcastSkillInvoke(objectName(),2);
+        room->broadcastSkillInvoke("paiyi", 2);
 
     CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, QString(),
         target->objectName(), "paiyi", QString());
     room->throwCard(Sanguosha->getCard(card_id), reason, NULL);
-    room->drawCards(target, 2,"paiyi");
+    room->drawCards(target, 2, "paiyi");
     if(target->getHandcardNum() > zhonghui->getHandcardNum()){
         DamageStruct damage;
         damage.card = NULL;

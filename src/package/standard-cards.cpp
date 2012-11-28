@@ -4,7 +4,6 @@
 #include "engine.h"
 #include "client.h"
 #include "room.h"
-#include "carditem.h"
 
 Slash::Slash(Suit suit, int number): BasicCard(suit, number)
 {
@@ -36,29 +35,53 @@ QString Slash::getSubtype() const{
 }
 
 void Slash::onUse(Room *room, const CardUseStruct &card_use) const{
-    if(card_use.from->hasFlag("slashTargetFix"))
+    ServerPlayer *player = card_use.from;
+
+    if(player->hasFlag("slashTargetFix"))
     {
-        room->setPlayerFlag(card_use.from, "-slashTargetFix");
+        room->setPlayerFlag(player, "-slashTargetFix");
+        room->setPlayerFlag(player, "-slashTargetFixToOne");
         foreach(ServerPlayer *target, room->getAlivePlayers())
             if(target->hasFlag("SlashAssignee")){
                 room->setPlayerFlag(target, "-SlashAssignee");
             }
     }
 
+    if (player->getPhase() == Player::Play
+        && player->getMark("SlashCount") >= 1
+        && player->hasSkill("paoxiao"))
+        room->broadcastSkillInvoke("paoxiao");
+    if (card_use.to.size() > 1 && player->hasSkill("shenji"))
+        room->broadcastSkillInvoke("shenji");
+    else if (card_use.to.size() > 1 && player->hasSkill("lihuo") && getSkillName() != "lihuo")
+        room->broadcastSkillInvoke("lihuo", 1);
+
+    if (isVirtualCard() && getSkillName() == "Spear")
+        room->setEmotion(player,"weapon/spear");
+    else if (card_use.to.size() > 1 && player->hasWeapon("Halberd") && player->isLastHandCard(this))
+        room->setEmotion(player,"weapon/halberd");
+    else if (isVirtualCard() && getSkillName() == "Fan")
+        room->setEmotion(player,"weapon/fan");
+    if (player->getPhase() == Player::Play
+        && player->getMark("SlashCount") >= 1
+        && player->hasWeapon("Crossbow")
+        && !player->hasSkill("paoxiao"))
+        room->setEmotion(player,"weapon/crossbow");
+    if (isKindOf("ThunderSlash"))
+        room->setEmotion(player, "thunder_slash");
+    else if (isKindOf("FireSlash"))
+        room->setEmotion(player, "fire_slash");
+    else if (isRed())
+        room->setEmotion(player, "slash_red");
+    else if (isBlack())
+        room->setEmotion(player, "slash_black");
+    else
+        room->setEmotion(player, "killer");
+
     BasicCard::onUse(room, card_use);
 }
 
 void Slash::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const{
-    if (source->getPhase() == Player::Play
-            && source->hasUsed("Slash")
-            && source->hasWeapon("Crossbow"))
-        room->setEmotion(source,"weapon/crossbow");
-    else if(isVirtualCard() && getSkillName() == "Spear")
-        room->setEmotion(source,"weapon/spear");
-    else if (targets.length()>1 && source->isKongcheng() && source->hasWeapon("Halberd"))
-        room->setEmotion(source,"weapon/halberd");
-    else if (isVirtualCard() && getSkillName() == "Fan")
-        room->setEmotion(source,"weapon/fan");
 
     BasicCard::use(room, source, targets);
 
@@ -114,17 +137,15 @@ bool Slash::targetFilter(const QList<const Player *> &targets, const Player *to_
     }
 
     if(targets.length() >= slash_targets) {
-        /*if (Self->hasSkill("duanbing") && targets.length() == slash_targets)
-            return Self->canSlash(to_select, this) && Self->distanceTo(to_select) == 1;
-        else*/
-            return false;
+        return false;
     }
 
-	if(Self->hasFlag("jiangchi_invoke")){
+    if(Self->hasFlag("jiangchi_invoke")){
         distance_limit = false;
     }
 
-    if (isKindOf("WushenSlash")) {
+    if (isKindOf("WushenSlash")
+        || (getSuit() == Card::Heart && Self->hasSkill("wushen"))) { // Be care!!!!
         distance_limit = false;
     }
 
@@ -557,8 +578,8 @@ AmazingGrace::AmazingGrace(Suit suit, int number)
 }
 
 void AmazingGrace::doPreAction(Room *room, const CardUseStruct &card_use) const{
-    QList<ServerPlayer *> players = card_use.to.isEmpty() ? room->getAllPlayers() : card_use.to;
-    QList<int> card_ids = room->getNCards(players.length());
+    //QList<ServerPlayer *> players = card_use.to.isEmpty() ? room->getAllPlayers() : card_use.to;
+    QList<int> card_ids = room->getNCards(room->getAllPlayers().length());
     room->fillAG(card_ids);
 
     QVariantList ag_list;
@@ -609,7 +630,7 @@ GodSalvation::GodSalvation(Suit suit, int number)
 }
 
 bool GodSalvation::isCancelable(const CardEffectStruct &effect) const{
-    return effect.to->isWounded();
+    return effect.to->isWounded() && TrickCard::isCancelable(effect);
 }
 
 void GodSalvation::onEffect(const CardEffectStruct &effect) const{
@@ -635,8 +656,10 @@ void SavageAssault::onEffect(const CardEffectStruct &effect) const{
                                          QVariant(),
                                          CardResponsed,
                                          effect.from->isAlive() ? effect.from : NULL);
-    if(slash)
+    if(slash){
+        if (slash->getSkillName() == "spear") room->setEmotion(effect.to, "weapon/spear");
         room->setEmotion(effect.to, "killer");
+    }
     else{
         DamageStruct damage;
         damage.card = this;
@@ -740,7 +763,11 @@ bool Collateral::targetFilter(const QList<const Player *> &targets,
         Q_ASSERT(targets.length() <= 2);
         if (targets.length() == 2) return false;
         const Player* slashFrom = targets[0];
-        if (slashFrom->canSlash(to_select)) return true;
+        if (to_select == Self && to_select->hasSkill("kongcheng")){ // Be care!!!
+            if (to_select->isLastHandCard(this)) return false;
+        }
+        if (slashFrom->canSlash(to_select))
+            return true;
         else return false;
     }
 
@@ -761,10 +788,9 @@ void Collateral::onUse(Room *room, const CardUseStruct &card_use) const{
     SingleTargetTrick::onUse(room, new_use);
 }
 
-
 bool Collateral::doCollateral(Room *room, ServerPlayer *killer, ServerPlayer *victim, const QString &prompt) const{
     bool useSlash = false;
-    if(killer->canSlash(victim))
+    if(killer->canSlash(victim, NULL, false))
     {
         useSlash = room->askForUseSlashTo(killer, victim, prompt);
     }
@@ -924,7 +950,7 @@ bool Snatch::targetFilter(const QList<const Player *> &targets, const Player *to
     if(to_select == Self)
         return false;
 
-    if(Self->distanceTo(to_select) > 1 && !Self->hasSkill("qicai"))
+    if(Self->distanceTo(to_select, getSkillName() == "jixi" ? 1 : 0) > 1 && !Self->hasSkill("qicai")) // Be care!!!
         return false;
 
     return true;

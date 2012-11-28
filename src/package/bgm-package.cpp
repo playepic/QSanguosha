@@ -2,8 +2,8 @@
 #include "skill.h"
 #include "standard.h"
 #include "clientplayer.h"
-#include "carditem.h"
 #include "engine.h"
+#include "settings.h"
 
 class ChongZhen: public TriggerSkill{
 public:
@@ -19,7 +19,7 @@ public:
                     && resp.m_who != NULL && !resp.m_who->isKongcheng()
                     && player->askForSkillInvoke(objectName(), toChongzhen))
             {
-                room->broadcastSkillInvoke(objectName());
+                room->broadcastSkillInvoke(objectName(), 1);
                 int card_id = room->askForCardChosen(player, resp.m_who, "h", objectName());
                 CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
                 room->obtainCard(player, Sanguosha->getCard(card_id), reason, false);
@@ -31,7 +31,7 @@ public:
                 foreach(ServerPlayer *p, use.to){
                     QVariant toChongzhen = QVariant::fromValue((PlayerStar)p);
                     if(p->isKongcheng() || !player->askForSkillInvoke(objectName(), toChongzhen)) continue;
-                    room->broadcastSkillInvoke(objectName());
+                    room->broadcastSkillInvoke(objectName(), 2);
                     int card_id = room->askForCardChosen(player, p, "h", objectName());
                     CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
                     room->obtainCard(player, Sanguosha->getCard(card_id), reason, false);
@@ -153,7 +153,7 @@ public:
     Kuiwei(): TriggerSkill("kuiwei"){
         events << EventPhaseStart;
     }
-	
+    
     virtual bool triggerable(const ServerPlayer *target) const{
         return target && target->isAlive() && (target->hasSkill(objectName()) || target->getMark("@kuiwei")>0);
     }
@@ -180,7 +180,7 @@ public:
             int n = getWeaponCount(caoren);
             caoren->drawCards(n+2);
             caoren->turnOver();
-            room->broadcastSkillInvoke("kuiwei", 1);
+            room->broadcastSkillInvoke("kuiwei");
             if(caoren->getMark("@kuiwei") == 0)
                 caoren->gainMark("@kuiwei");
         }
@@ -196,7 +196,7 @@ public:
                 log.arg = QString::number(n);
                 log.arg2 = objectName();
                 room->sendLog(log);
-                room->broadcastSkillInvoke("kuiwei", 2);
+                //room->broadcastSkillInvoke("kuiwei", 2);
                 if(caoren->getCards("he").length() <= n){
                     caoren->throwAllHandCardsAndEquips();
                 }
@@ -436,6 +436,11 @@ public:
         if(!damage.card || !damage.card->isKindOf("Slash") || !damage.card->isRed())
             return false;
 
+        int index = 1;
+        if (damage.to->getGeneralName().contains("lvbu"))
+            index = 2;
+        room->broadcastSkillInvoke(objectName(), index);
+
         LogMessage log;
         log.type = "#Jie";
         log.from = player;
@@ -640,8 +645,8 @@ public:
 
         return false;
     }
-	
-	virtual int getEffectIndex(const ServerPlayer *, const Card *) const{
+    
+    virtual int getEffectIndex(const ServerPlayer *, const Card *) const{
         return 1;
     }
 };
@@ -1221,7 +1226,7 @@ public:
                 if (!target->isAlive()) return false;
                 if (target->hasEquip()) {
                     int card_id = room->askForCardChosen(ganning, target, "e", objectName());
-                    target->addToPile("junwei-equip", card_id);
+                    target->addToPile("junwei_equip", card_id);
                 }
             }
         }
@@ -1241,9 +1246,9 @@ public:
 
     virtual bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const {
         PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        if (change.to != Player::NotActive || player->getPile("junwei-equip").length() == 0)
+        if (change.to != Player::NotActive || player->getPile("junwei_equip").length() == 0)
             return false;
-        foreach(int card_id, player->getPile("junwei-equip")){
+        foreach (int card_id, player->getPile("junwei_equip")) {
             const Card *card = Sanguosha->getCard(card_id);
 
             int equip_index = -1;
@@ -1348,12 +1353,15 @@ public:
             foreach (ServerPlayer *p, room->getOtherPlayers(xiahou))
                 if (xiahou->canSlash(p, NULL, false))
                     targets << p;
+            targets << xiahou;
             QString choice;
             if (targets.isEmpty())
                 choice = "discard";
             else
                 choice = room->askForChoice(xiahou, objectName(), "discard+slash");
             if (choice == "slash") {
+                room->broadcastSkillInvoke(objectName(), 2);
+
                 ServerPlayer *victim = room->askForPlayerChosen(xiahou, targets, objectName());
 
                 Slash *slash = new Slash(Card::NoSuit, 0);
@@ -1377,21 +1385,19 @@ public:
                     dummy->addSubcard(card_ids[i]);
                     player->addToPile("#xuehen", card_ids[i], false);
                 }
-                if (dummy->subcardsLength() == 0)
-                    return false;
-                else
-                    for (int i = 0; i < dummy->subcardsLength(); i++)
-                        room->moveCardTo(Sanguosha->getCard(card_ids[i]), player, original_places[i], false);
+                for (int i = 0; i < dummy->subcardsLength(); i++)
+                    room->moveCardTo(Sanguosha->getCard(card_ids[i]), player, original_places[i], false);
                 room->setPlayerFlag(player, "-XuehenTarget_InTempMoving");
-                room->throwCard(dummy, player, xiahou);
+                if (dummy->subcardsLength() > 0)
+                    room->throwCard(dummy, player, xiahou);
                 dummy->deleteLater();
             }
         }
         return false;
     }
 
-    virtual int getEffectIndex(const ServerPlayer *, const Card *card) const {
-        return 2;
+    virtual int getEffectIndex(const ServerPlayer *, const Card *) const {
+        return -2;
     }
 };
 

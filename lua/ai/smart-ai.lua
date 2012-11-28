@@ -10,7 +10,7 @@ math.randomseed(os.time())
 -- SmartAI is the base class for all other specialized AI classes
 SmartAI = class "SmartAI"
 
-version = "QSanguosha AI 20120405 (V0.8 Stable)"
+version = "QSanguosha AI 20121014 (V0.99 Alpha)"
 --- this function is only function that exposed to the host program
 --- and it clones an AI instance by general name
 -- @param player The ServerPlayer object that want to create the AI object
@@ -64,7 +64,18 @@ sgs.ai_choicemade_filter = 	{
 	playerChosen =			{}
 }
 
+sgs.current_state = 1
+
 function setInitialTables()
+	sgs.agents =   {}
+	sgs.env_actions = {}
+	
+	--expression for action's hostile or goodwill
+	sgs.actionIsGoodwill = true
+	sgs.actionTargets = {}
+
+	--------------------------------------
+
 	sgs.current_mode_players = 	{loyalist = 0, rebel = 0, renegade = 0}
 	sgs.ai_type_name = 			{"Skill", "Basic", "Trick", "Equip"}
 	sgs.target = 				{loyalist = nil, rebel = nil, renegade = nil } -- obsolete
@@ -80,6 +91,8 @@ function setInitialTables()
 	sgs.exclusive_skill = 		"huilei|duanchang|enyuan|wuhun|buqu|yiji|ganglie|guixin|jieming|miji"
 	sgs.cardneed_skill =        "paoxiao|tianyi|xianzhen|shuangxiong|jizhi|guose|duanliang|qixi|qingnang|" ..
 								"jieyin|renjie|zhiheng|rende|jujian|guicai|guidao|jilve|longhun|wusheng|longdan"
+								
+	sgs.offensive_skill =       "qiangxi|jizhi|qixi|duanliang|guose|dimeng|lihun|tuxi"
 	sgs.drawpeach_skill =       "tuxi|qiaobian"
 	sgs.recover_skill =         "rende|kuanggu|zaiqi|jieyin|qingnang|yinghun"
 	
@@ -93,6 +106,174 @@ function setInitialTables()
 	end
 	
 end
+
+--@@for global function
+
+function isWeak(player)
+	local hcard = player:getHandcardNum()
+	if player:hasSkill("longhun") then hcard = player:getCards("he"):length() end
+	return ((player:getHp() <= 2 and hcard <= 2) or (player:getHp() <= 1 and not (player:hasSkill("longhun") and hcard > 2))) and not player:hasSkill("buqu")
+end
+
+------------------------
+
+--record all actions for the environment
+function SmartAI:recordAction(_from, _to, _card, _isGood)
+	local action_table = 
+	{
+		from = _from,
+		to = _to,
+		card = _card,
+		isGood = _isGood
+	}
+	table.insert(sgs.env_actions, action_table)
+	
+	if sgs.agents[_from:objectName()] == nil then sgs.agents[_from:objectName()] = { agentActions = {}, agentFriends = {}, agentEnemies = {} } end
+	table.insert(sgs.agents[_from:objectName()].agentActions, action_table)
+	
+	sgs.state = sgs.current_state + 1
+	
+	self:updateAgent(action_table)
+	sgs.actionIsGoodwill = true
+	sgs.actionTargets = {}
+end
+
+function SmartAI:getActionByState(index, actions)
+	if actions then
+		if #actions < index or #actions > index then return nil else return actions[index] end
+	end
+	
+	if #sgs.env_actions < index or #sgs.env_actions > index then return nil else
+		return sgs.env_actions[index]
+	end
+end
+
+function SmartAI:getLatestActions(n, actions)
+	local ac = actions or sgs.env_actions
+	local x = 0
+	local actions_table = {}
+	for i=n, 1, -1 do
+		if #ac - x <= 0 then break end
+		
+		table.insert(actions_table, ac[#ac-x])
+		x = x + 1
+	end
+	
+	return actions_table
+end
+
+--@for MAS agent
+function SmartAI:updateAgent(action, object_name)
+    object_name = object_name or self.player:objectName()
+	
+	self:updateFriendsNEnemies(action)
+end
+
+function SmartAI:getAgentActions(object_name)
+	return sgs.agents[object_name].agentActions
+end
+
+function SmartAI:getAgentFriends(object_name)
+	return sgs.agents[object_name].agentFriends
+end
+
+function SmartAI:getAgentEnemies(object_name)
+	return sgs.agents[object_name].agentEnemies
+end
+
+--@@todo:get power value of agent, maybe use all the actions the env recorded.
+function SmartAI:getAgentValue(agent_plyer)
+	
+	--@@todo:make formula for the calulation of state evaluation
+	return sgs.getOffense(agent_player)/2 + sgs.getDefense(agent_player) + sgs.getValue(agent_player)/3
+end
+
+function SmartAI:updateFriendsNEnemies(action)
+	local value = self:getActionValue()
+	
+	for to in ipairs(action.to) do
+		if from ~= to then
+			local friends = self:getAgentFriends(to:objectName())
+			local enemies = self:getAgentEnemies(to:objectName())
+		
+			if action.isGood then 
+				for _, friend in ipairs(friends) do
+					if action.from:objectName() == friend.objectName then 
+						friend.value = friend.value + value
+						break
+					end
+				end
+				for _, enemy in ipairs(enemies) do
+					if action.from:objectName() == enemy.objectName then
+						enemy.value = enemy.value - value
+						if enemy.value < 0 then
+							table.remove(sgs.agents[to:objectName()].agentEnemies, enemy)
+							table.insert(sgs.agents[to:objectName()].agentFriends, enemy)
+						end
+						break
+					end
+				end
+		
+				if #friends == 0 and #enemies == 0 then
+					local friend_struct = { objectName = action.from:objectName(), value = value }
+					table.insert(sgs.agents[to:objectName()].agentFriends, friend_struct)
+				end
+			else			
+				for _, enemy in ipairs(enemies) do
+					if action.from:objectName() == enemy.objectName then
+						enemy.value = enemy.value + value
+						break
+					end
+				end
+				
+				for _, friend in ipairs(friends) do
+					if action.from:objectName() == friend.objectName then 
+						friend.value = friend.value - value
+						if friend.value < 0 then
+							table.remove(sgs.agents[to:objectName()].agentFriends, friend)
+							table.insert(sgs.agents[to:objectName()].agentEnemies, friend)
+						end
+						break
+					end
+				end
+			
+				if #friends == 0 and #enemies == 0 then
+					local enemy_struct = { objectName = action.from:objectName(), value = value }
+					table.insert(sgs.agents[to:objectName()].agentEnemies, enemy_struct)
+				end
+			end
+		end
+	end
+end
+
+-----------------
+
+--@for MAS environment
+function SmartAI:getBeliefState(player)
+
+	return
+end
+
+--action values can present the offensive power and defensive power by analysing all the actions in the environment
+function SmartAI:getActionValue(action)
+	local card_value = math.abs(sgs.ai_card_intention[action.card:getClassName()])
+	
+	--@@todo: get the card use frequency to do inverse frequency
+	return card_value
+end
+
+function SmartAI:containsAgent(player_table, player)
+	player = player or self.player
+	
+	for _, p_table in ipairs(player_table) do
+		if p_table.objectName == player:objectName() then return true end
+	end
+	
+	return false
+end
+
+-----------------
+	
 
 function SmartAI:initialize(player)
 	self.player = player
@@ -154,6 +335,17 @@ function SmartAI:initialize(player)
 		end
 	end
 	
+	for _, p in sgs.qlist(self.room:getOtherPlayers(self.room:getLord())) do
+		local mate_struct = { objectName = self.room:getLord():objectName(), value = 99999 }
+		sgs.agents[p:objectName()] = { agentActions = {}, agentFriends = {}, agentEnemies = {}}
+		
+		if p:getRole() == "loyalist" then 
+			table.insert(sgs.agents[p:objectName()].agentFriends, mate_struct)
+		elseif p:getRole() == "rebel" then
+			table.insert(sgs.agents[p:objectName()].agentEnemies, mate_struct)
+		end
+	end
+	
 	self:updateAlivePlayerRoles()
 	self:updatePlayers()
 end
@@ -161,6 +353,15 @@ end
 function sgs.getValue(player)
 	if not player then global_room:writeToConsole(debug.traceback()) end
 	return player:getHp() * 2 + player:getHandcardNum()
+end
+
+function sgs.getOffense(player)
+	local offense = 1
+	if player:getWeapon() and player:getHandcardNum() > 3 then offense = offense + 1.5 end
+	
+	if self:hasSkills(sgs.offensive_skill, player) and not isWeak(player) then offense = offense + 3 end
+	
+	return offense
 end
 
 function sgs.getDefense(player)
@@ -337,7 +538,7 @@ function SmartAI:getUsePriority(card)
 		if v then return v else return sgs.ai_use_priority[class_name] end
 	end
 	if self.player:hasSkill("rende") then
-		if card:isKindOf("ExNihio") then v = 8.9 end
+		if card:isKindOf("ExNihilo") then v = 8.9 end
 		return v or sgs.ai_use_priority[class_name]
 	end
 
@@ -864,7 +1065,7 @@ function sgs.modifiedRoleTrends(role)
 				sgs.role_evaluation[name]["rebel"] = sgs.role_evaluation[name][role] + 15	
 			end
 		end
-		global_room:writeToConsole("The evaluation role of " .. modifier:getGeneralName() .. " " ..  " is " .. sgs.evaluatePlayerRole(modifier))
+		global_room:writeToConsole("The evaluation role of " .. modifier:getGeneralName() ..  " is " .. sgs.evaluatePlayerRole(modifier))
 	end
 	
 	global_room:writeToConsole("Modified Role Trends Success!")
@@ -901,7 +1102,7 @@ end
 function sgs.isRolePredictable()
 	if sgs.GetConfig("RolePredictable", true) then return true end
 	local mode = string.lower(global_room:getMode())
-	if not mode:find("0") or mode:find("03p") or mode:find("02_1v1") or mode:find("04_1v3") or mode == "06_3v3" or mode:find("mini") then return true end
+	if not mode:find("0") or mode:find("02p") or mode:find("02_1v1") or mode:find("04_1v3") or mode == "06_3v3" or mode:find("mini") then return true end
 	return false
 end
 
@@ -1176,6 +1377,7 @@ function sgs.gameProcess(room)
 	else return "neutral" end
 end
 
+--@@todo: remove all the objectiveLevel
 function SmartAI:objectiveLevel(player)
 	if player:objectName() == self.player:objectName() then return -2 end
 
@@ -1338,7 +1540,7 @@ function SmartAI:isFriend(other, another)
 	if another then return self:isFriend(other)==self:isFriend(another) end
 	if sgs.isRolePredictable() and self.lua_ai:relationTo(other) ~= sgs.AI_Neutrality then return self.lua_ai:isFriend(other) end
 	if self.player:objectName() == other:objectName() then return true end
-	if self:objectiveLevel(other) < 0 then return true end
+	if self:containsAgent(sgs.agents[self.player:objectName()].agentFriends, other) then return true end
 	return false
 end
 
@@ -1347,49 +1549,108 @@ function SmartAI:isEnemy(other, another)
 	if another then return self:isFriend(other)~=self:isFriend(another) end
 	if sgs.isRolePredictable() and self.lua_ai:relationTo(other) ~= sgs.AI_Neutrality then return self.lua_ai:isEnemy(other) end
 	if self.player:objectName() == other:objectName() then return false end
-	if self:objectiveLevel(other) > 0 then return true end
+	if self:containsAgent(sgs.agents[self.player:objectName()].agentEnemies, other) then return true end
 	return false
 end
 
 function SmartAI:getFriendsNoself(player)
 	player = player or self.player
-	if self:isFriend(self.player, player) then
-		return self.friends_noself
-	elseif self:isEnemy(self.player, player) then
-		friends = sgs.QList2Table(self.lua_ai:getEnemies())
-		for i = #friends, 1, -1 do
-			if friends[i]:objectName() == player:objectName() then
-				table.remove(friends, i)
+	
+	local enemies = sgs.agents[player:objectName()].agentEnemies
+	local enemies_list = {}
+	
+	for _, p in sgs.qlist(self.room:getOtherPlayers(player)) do
+		for _, enemy in ipairs(enemies) do
+			if p:objectName() == enemy.objectName then
+				table.insert(enemies_list, p)
 			end
 		end
-		return friends
-	else
-		return {}
 	end
+	return enemies_list 
+	
+--	if self:isFriend(self.player, player) then
+--		return self.friends_noself
+--	elseif self:isEnemy(self.player, player) then
+--		friends = sgs.QList2Table(self.lua_ai:getEnemies())
+--		for i = #friends, 1, -1 do
+--			if friends[i]:objectName() == player:objectName() then
+--				table.remove(friends, i)
+--			end
+--		end
+--		return friends
+--	else
+--		return {}
+--	end
 end
 
 function SmartAI:getFriends(player)
 	player = player or self.player
-	if self:isFriend(self.player, player) then
-		return self.friends
-	elseif self:isEnemy(self.player, player) then
-		return self.enemies
-	else
-		return {player}
+	
+	local friends = sgs.agents[player:objectName()].agentFriends
+	local friends_list = {}
+	
+	for _, p in sgs.qlist(self.room:getAllPlayers()) do
+		for _, friend in ipairs(friends) do
+			if p:objectName() == friend.objectName then
+				table.insert(friends_list, p)
+			end
+		end
 	end
+	
+	return friends_list
+	
+--	if self:isFriend(self.player, player) then
+--		return 
+--	elseif self:isEnemy(self.player, player) then
+--		return self.enemies
+--	else
+--		return {player}
+--	end
 end
 
 function SmartAI:getEnemies(player)
-	if self:isFriend(self.player, player) then
-		return self.enemies
-	elseif self:isEnemy(self.player, player) then
-		return self.friends
-	else
-		return {}
+	local enemies = sgs.agents[player:objectName()].agentEnemies 
+	local enemies_list = {}
+	for _, p in sgs.qlist(self.room:getOtherPlayers(player)) do
+		for _, enemy in ipairs(enemies) do
+			if p:objectName() == enemy.objectName then
+				table.insert(enemies_list, p)
+			end
+		end
 	end
+	
+	return enemies_list
+--	if self:isFriend(self.player, player) then
+--		return self.enemies
+--	elseif self:isEnemy(self.player, player) then
+--		return self.friends
+--	else
+--		return {}
+--	end
 end
 
-function SmartAI:sortEnemies(players)
+function SmartAI:sortFriends(player)
+	player = player or self.player
+	
+	local comp_func = function(a, b)
+		return a.value > b.value
+	end
+	
+	table.sort(sgs.agents[player:objectName()].agentFriends, comp_func)
+end
+
+function SmartAI:sortEnemies(player)
+	player = player or self.player
+	
+	local comp_func = function(a, b)
+		return a.value > b.value
+	end
+	
+	table.sort(sgs.agents[player:objectName()].agentEnemies, comp_func)
+end
+
+function SmartAI:sortPlayers(players)
+	
 	local comp_func = function(a,b)
 		local alevel = self:objectiveLevel(a)
 		local blevel = self:objectiveLevel(b)
@@ -1430,6 +1691,7 @@ function SmartAI:updateRoleTargets()
 end
 
 function SmartAI:updatePlayers()
+	if self.role ~= self.player:getRole() then self.role = self.player:getRole() end
 	for _, aflag in ipairs(sgs.ai_global_flags) do
 		sgs[aflag] = nil
 	end
@@ -1485,7 +1747,7 @@ function SmartAI:updatePlayers()
 	if self.role == "rebel" then self.retain = 2 end
 
 	if self.player:getHp() < 2 then self.retain = 0 end
-	self:sortEnemies(players)
+	self:sortPlayers(players)
 	for _,player in ipairs(players) do
 		if self:objectiveLevel(player) >= 4 then self.harsh_retain = false end
 		if #elist == 0 then
@@ -1562,6 +1824,17 @@ function SmartAI:filterEvent(event, player, data)
 				local callback = callbacktable[promptlist[index]] or callbacktable.general
 				if type(callback) == "function" then
 					callback(player, promptlist)
+				end
+			end
+			if data:toString() == "skillInvoke:fenxin:yes" then
+				for _, aplayer in sgs.qlist(self.room:getAllPlayers()) do
+					if aplayer:hasFlag("FenxinTarget") then
+						local temp_table = sgs.role_evaluation[player:objectName()]
+						sgs.role_evaluation[player:objectName()] = sgs.role_evaluation[aplayer:objectName()]
+						sgs.role_evaluation[aplayer:objectName()] = temp_table
+						self:updatePlayers()
+						break
+					end
 				end
 			end
 		end
@@ -1643,21 +1916,23 @@ function SmartAI:filterEvent(event, player, data)
 				sgs.updateIntentions(from, to, callback, card)
 			end
 		end
-	elseif event == sgs.CardLost then
-		local move = data:toCardMove()
+	elseif event == sgs.CardsMoveOneTime then
+		local move = data:toMoveOneTime()
 		local from = move.from
-		local place = move.from_place
-		local card = sgs.Sanguosha:getCard(move.card_id)
-		if sgs.ai_snat_disma_effect then
-			sgs.ai_snat_disma_effect = false
-			local intention = 70
-			if place == sgs.Player_PlaceDelayedTrick then
-				if not card:isKindOf("Disaster") then intention = -intention else intention = 0 end
-			elseif place == sgs.Player_PlaceEquip then
-				if player:getLostHp() > 1 and card:isKindOf("SilverLion") then intention = -intention end
-				if self:hasSkills(sgs.lose_equip_skill, player) or card:isKindOf("GaleShell") then intention = 0 end
+		for i = 1, move.card_ids:length() do
+			local place = move.from_places:at(i)
+			local card = sgs.Sanguosha:getCard(move.card_ids:at(i))
+			if sgs.ai_snat_disma_effect then
+				sgs.ai_snat_disma_effect = false
+				local intention = 70
+				if place == sgs.Player_PlaceDelayedTrick then
+					if not card:isKindOf("Disaster") then intention = -intention else intention = 0 end
+				elseif place == sgs.Player_PlaceEquip then
+					if player:getLostHp() > 1 and card:isKindOf("SilverLion") then intention = -intention end
+					if self:hasSkills(sgs.lose_equip_skill, player) then intention = 0 end
+				end
+				sgs.updateIntention(sgs.ai_snat_dism_from, from, intention)
 			end
-			sgs.updateIntention(sgs.ai_snat_dism_from, from, intention)
 		end
 	elseif event == sgs.StartJudge then
 		local judge = data:toJudge()
@@ -1709,7 +1984,7 @@ function SmartAI:askForChoice(skill_name, choices, data)
 		if skill and choices:match(skill:getDefaultChoice(self.player)) then
 			return skill:getDefaultChoice(self.player)
 		else
-			local choice_table = choices:split("+");
+			local choice_table = choices:split("+")
 			for index, achoice in ipairs(choice_table) do
 				if achoice == "benghuai" then table.remove(choice_table, index) break end
 			end
@@ -1917,7 +2192,7 @@ function SmartAI:askForCardChosen(who, flags, reason)
 	end
 
 	if self:isFriend(who) then
-		if flags:match("j") then
+		if flags:match("j") and not who:containsTrick("YanxiaoCard") then
 			local tricks = who:getCards("j")
 			local lightning, indulgence, supply_shortage
 			for _, trick in sgs.qlist(tricks) do
@@ -1994,14 +2269,19 @@ function SmartAI:askForCardChosen(who, flags, reason)
 
 		if flags:match("j") then
 			local tricks = who:getCards("j")
-			local lightning
+			local lightning, yanxiao
 			for _, trick in sgs.qlist(tricks) do
 				if trick:isKindOf("Lightning") then
 					lightning = trick:getId()
+				elseif trick:isKindOf("YanxiaoCard") then
+					yanxiao = trick:getId()
 				end
 			end
 			if self:hasWizard(self.enemies,true) and lightning then
 				return lightning
+			end
+			if yanxiao then
+				return yanxiao
 			end
 		end
 
@@ -2174,7 +2454,7 @@ function sgs.ai_cardneed.equip(to, card, self)
 end
 
 function SmartAI:needKongcheng(player)
-	return (player:isKongcheng() and (player:hasSkill("kongcheng") or (player:hasSkill("zhiji") and not player:hasSkill("guanxing")))) or
+	return (player:isKongcheng() and (player:hasSkill("kongcheng") or (player:hasSkill("zhiji") and player:getMark("zhiji") == 0))) or
 			(not self:isWeak(player) and self:hasSkills(sgs.need_kongcheng,player))
 end
 
@@ -2697,6 +2977,8 @@ function SmartAI:getTurnUse()
 				if card:isKindOf("Weapon") then
 					self.predictedRange = sgs.weapon_range[card:getClassName()]
 					self.weaponUsed = true
+				else
+					self.predictedRange = 1
 				end
 				if card:isKindOf("OffensiveHorse") then self.predictNewHorse = true end
 				if card:objectName() == "Crossbow" then slashAvail = 100 end
@@ -2740,9 +3022,7 @@ end
 
 function SmartAI:isWeak(player)
 	player = player or self.player
-	local hcard = player:getHandcardNum()
-	if player:hasSkill("longhun") then hcard = player:getCards("he"):length() end
-	return ((player:getHp() <= 2 and hcard <= 2) or (player:getHp() <= 1 and not (player:hasSkill("longhun") and hcard > 2))) and not player:hasSkill("buqu")
+	return isWeak(player)
 end
 
 function SmartAI:useCardByClassName(card, use)
@@ -2751,6 +3031,10 @@ function SmartAI:useCardByClassName(card, use)
 
 	if use_func then
 		use_func(self, card, use)
+		
+		if (use.to or #sgs.actionTargets ~= 0) and not use.isDummy then
+			self:recordAction(use.from, use.to or sgs.actionTargets, use.card, sgs.actionIsGoodwill)
+		end
 	end
 end
 
@@ -3300,7 +3584,7 @@ function SmartAI:evaluatePlayerCardsNum(class_name, player)
 	end
 	
 	local percentage = (#(self:getCardsFromGame(class_name)) - #(self:getCardsFromDiscardPile(class_name)))/length
-	local modified = 1;
+	local modified = 1
 	if class_name == "Jink" then modified = 1.23
 	elseif class_name == "Analeptic" then modified = 1.17
 	elseif class_name == "Peach" then modified = 1.19
@@ -3679,6 +3963,7 @@ function SmartAI:useTrickCard(card, use)
 	else
 		self:useCardByClassName(card, use)
 	end
+	
 	if use.to then
 		if not use.to:isEmpty() and sgs.dynamic_value.damage_card[card:getClassName()] then
 			for _, target in sgs.qlist(use.to) do

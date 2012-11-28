@@ -10,11 +10,12 @@ GongxinCard::GongxinCard(){
 }
 
 bool GongxinCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const{
-    return targets.isEmpty(); 
+    return targets.isEmpty() && to_select != Self; 
 }
 
 void GongxinCard::onEffect(const CardEffectStruct &effect) const{
-    effect.from->getRoom()->doGongxin(effect.from, effect.to);
+    if (!effect.to->isKongcheng())
+        effect.from->getRoom()->doGongxin(effect.from, effect.to);
 }
 
 class Wuhun: public TriggerSkill{
@@ -146,11 +147,12 @@ public:
         while(!card_ids.isEmpty()){
             int card_id = room->askForAG(shenlvmeng, card_ids, false, "shelie");
             card_ids.removeOne(card_id);
-            room->takeAG(shenlvmeng, card_id);
-
             // throw the rest cards that matches the same suit
             const Card *card = Sanguosha->getCard(card_id);
             Card::Suit suit = card->getSuit();
+
+            room->takeAG(shenlvmeng, card_id);
+
             QMutableListIterator<int> itor(card_ids);
             while(itor.hasNext()){
                 const Card *c = Sanguosha->getCard(itor.next());
@@ -222,8 +224,9 @@ bool GreatYeyanCard::targetsFeasible(const QList<const Player *> &targets, const
     }
     
     //We can only assign 2 damage to one player
+    //If we select only one target only once, we assign 3 damage to the target
     if(targets.toSet().size() == 1)
-        return targets.size() > 1;
+        return true;
     else if(targets.toSet().size() == 2)
         return targets.size() == 3;
     return false;
@@ -247,6 +250,9 @@ void GreatYeyanCard::use(Room *room, ServerPlayer *shenzhouyu, QList<ServerPlaye
 
     foreach(ServerPlayer* sp, targets)
         map[sp]++;
+
+    if (targets.size() == 1)
+        map[targets.first()] += 2;
 
     foreach(ServerPlayer* sp,map.keys()){
         if(map[sp] > 1)
@@ -336,7 +342,6 @@ public:
         return card;
     }
 };
-
 
 class Qinyin: public TriggerSkill{
 public:

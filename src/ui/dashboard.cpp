@@ -92,17 +92,17 @@ void Dashboard::_createMiddle() {
     button_widget->setParentItem(_m_middleFrame);
 
     trusting_item = new QGraphicsRectItem(this);
-    trusting_text = new QGraphicsSimpleTextItem(tr("Trusting ..."), _m_middleFrame);
+    trusting_text = new QGraphicsSimpleTextItem(tr("Trusting ..."), this);
     trusting_text->setPos(this->boundingRect().width() / 2, 50);
 
     QBrush trusting_brush(QColor(0x26, 0x1A, 0x42));
     trusting_item->setBrush(trusting_brush);
     trusting_item->setOpacity(0.36);
-    trusting_item->setZValue(2.0);
+    trusting_item->setZValue(1002.0);
     
     trusting_text->setFont(Config.BigFont);
     trusting_text->setBrush(Qt::white);
-    trusting_text->setZValue(2.1);
+    trusting_text->setZValue(1002.1);
 
     trusting_item->hide();
     trusting_text->hide();
@@ -149,8 +149,11 @@ void Dashboard::_updateFrames()
     QRect rect = QRect(G_DASHBOARD_LAYOUT.m_leftWidth, 0, 
         this->width() - G_DASHBOARD_LAYOUT.m_rightWidth - G_DASHBOARD_LAYOUT.m_leftWidth, G_DASHBOARD_LAYOUT.m_normalHeight);
     _paintPixmap(_m_middleFrame, rect, _getPixmap(QSanRoomSkin::S_SKIN_KEY_MIDDLEFRAME), this);
-    trusting_item->setRect(rect);
-    trusting_item->setPos(G_DASHBOARD_LAYOUT.m_leftWidth, 0);
+    QRect rect2 = QRect(0, 0, this->width(), G_DASHBOARD_LAYOUT.m_normalHeight);
+    trusting_item->setRect(rect2);
+    trusting_item->setPos(0, 0);
+    trusting_text->setPos((rect2.width() - Config.BigFont.pixelSize() * 4.5) / 2,
+                          (rect2.height() - Config.BigFont.pixelSize()) / 2);
     _m_rightFrame->setX(_m_width - G_DASHBOARD_LAYOUT.m_rightWidth);
     Q_ASSERT(button_widget);
     button_widget->setX(rect.width() - getButtonWidgetWidth());
@@ -215,9 +218,9 @@ void Dashboard::_addHandCard(CardItem* card_item)
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));      
 }
 
-void Dashboard::selectCard(const QString &pattern, bool forward){
-    if(selected)
-        selectCard(selected, true); // adjust the position
+void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple){
+    if (!multiple && selected && selected->isSelected())
+        selected->clickItem();
 
     // find all cards that match the card type
     QList<CardItem*> matches;
@@ -230,8 +233,10 @@ void Dashboard::selectCard(const QString &pattern, bool forward){
     }
 
     if(matches.isEmpty()){
-        unselectAll();
-        return;
+        if (!multiple || !selected) {
+            unselectAll();
+            return;
+        }
     }
 
     int index = matches.indexOf(selected);
@@ -242,14 +247,22 @@ void Dashboard::selectCard(const QString &pattern, bool forward){
         index = (index - 1 + n) % n;
 
     CardItem *to_select = matches[index];
+    if (!to_select->isSelected())
+        to_select->clickItem();
+    else if (to_select->isSelected() && (!multiple || (multiple && to_select != selected)))
+       to_select->clickItem();
+    selected = to_select;
 
-    if(to_select != selected){
-        if(selected)
-            selectCard(selected, false);
-        selectCard(to_select, true);
-        selected = to_select;
+    adjustCards();
+}
 
-        emit card_selected(selected->getCard());
+void Dashboard::selectEquip(int position) {
+    int i = position - 1;
+    if(_m_equipCards[i] != NULL){
+        if(_m_equipCards[i]->isMarkable()) {
+            _m_equipCards[i]->mark(!_m_equipCards[i]->isMarked());
+            update();
+        }
     }
 }
 
@@ -264,8 +277,6 @@ const Card *Dashboard::getSelected() const
 }
 
 void Dashboard::selectCard(CardItem* item, bool isSelected){
-    //if(Self && Self->getHandcardNum() > Config.MaxCards)
-    //    frame->show();    
     bool oldState = item->isSelected();
     if (oldState == isSelected) return;
     m_mutex.lock();
@@ -291,6 +302,15 @@ void Dashboard::unselectAll(){
     }
 
     adjustCards(true);
+    for (int i = 0; i < 4; i++) {
+        if(_m_equipCards[i] != NULL){
+            _m_equipCards[i]->mark(false);
+        }
+    }
+    if (view_as_skill) {
+        pendings.clear();
+        updatePending();
+    }
 }
 
 QRectF Dashboard::boundingRect() const{
@@ -745,44 +765,18 @@ void Dashboard::sortCards(bool doAnimation){
 }
 
 void Dashboard::reverseSelection(){
-    /*
-    if(view_as_skill == NULL)
+    if (!view_as_skill)
         return;
-
-    m_mutexEnableCards.lock();
-
-    QSet<const Card *> selected_set;
-    foreach (CardItem* item, pendings)
-        selected_set.insert(item->getCard());
-    unselectAll();
-
-    foreach(CardItem *item, m_handCards)
-        item->setEnabled(false);
-
-    pendings.clear();
-
-    QList<const Card*> pendingCards; 
-    foreach(CardItem *item, m_handCards){
-        const Card* card = item->getCard();
-        if (view_as_skill->viewFilter(pendingCards, card) &&
-            !selected_set.contains(card))
-        {
-            pendings << item;
-            item->setEnabled(true);
-            selectCard(item, true);
+    QList<CardItem *> selected_items;
+    foreach (CardItem *item, m_handCards)
+        if (item->isSelected()) {
+            item->clickItem();
+            selected_items << item;
         }
-    }
-    
+    foreach (CardItem *item, m_handCards)
+        if (item->isEnabled() && !selected_items.contains(item))
+            item->clickItem();
     adjustCards();
-    
-    if (pending_card && pending_card->isVirtualCard() &&
-        pending_card->parent() == NULL) {
-        delete pending_card;
-    }
-
-    pending_card = view_as_skill->viewAs(pendingCards);
-    m_mutexEnableCards.unlock();
-    emit card_selected(pending_card);*/
 }
 
 void Dashboard::disableAllCards(){

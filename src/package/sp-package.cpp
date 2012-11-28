@@ -2,7 +2,6 @@
 #include "general.h"
 #include "skill.h"
 #include "standard-skillcards.h"
-#include "carditem.h"
 #include "engine.h"
 #include "maneuvering.h"
 #include "wisdompackage.h"
@@ -289,15 +288,19 @@ void WeidiCard::onUse(Room *room, const CardUseStruct &card_use) const{
 
         ServerPlayer* target = room->askForPlayerChosen(yuanshu, targets, "jijiang");
         if(target){
+            JijiangCard *jijiang = new JijiangCard;
+            jijiang->setSkillName("weidi");
             CardUseStruct use;
-            use.card = new JijiangCard;
+            use.card = jijiang;
             use.from = yuanshu;
             use.to << target;
             room->useCard(use);
         }
     }else{
+        WeidaiCard *weidai = new WeidaiCard;
+        weidai->setSkillName("weidi");
         CardUseStruct use;
-        use.card = new WeidaiCard;
+        use.card = weidai;
         use.from = yuanshu;
         room->useCard(use);
     }
@@ -381,6 +384,114 @@ public:
     }
 };
 
+YuanhuCard::YuanhuCard(){
+    mute = true;
+    will_throw = false;
+}
+
+bool YuanhuCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const{
+    if (!targets.isEmpty())
+        return false;
+
+    const Card *card = Sanguosha->getCard(subcards.first());
+    const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+    int equip_index = static_cast<int>(equip->location());
+    return to_select->getEquip(equip_index) == NULL;
+}
+
+void YuanhuCard::onUse(Room *room, const CardUseStruct &card_use) const{
+    int index = -1;
+    if (card_use.to.first() == card_use.from)
+        index = 5;
+    else if (card_use.to.first()->isCaoCao())
+        index = 4;
+    else {
+        const Card *card = Sanguosha->getCard(card_use.card->getSubcards().first());
+        if (card->isKindOf("Weapon"))
+            index = 1;
+        else if (card->isKindOf("Armor"))
+            index = 2;
+        else if (card->isKindOf("Horse"))
+            index = 3;
+    }
+    room->broadcastSkillInvoke("yuanhu", index);
+    SkillCard::onUse(room, card_use);
+}
+
+void YuanhuCard::onEffect(const CardEffectStruct &effect) const{
+    ServerPlayer *caohong = effect.from;
+    Room *room = caohong->getRoom();
+    room->moveCardTo(this, caohong, effect.to, Player::PlaceEquip,
+                     CardMoveReason(CardMoveReason::S_REASON_PUT, caohong->objectName(), "yuanhu", QString()));
+
+    const Card *card = Sanguosha->getCard(subcards.first());
+
+    LogMessage log;
+    log.type = "$ZhijianEquip";
+    log.from = effect.to;
+    log.card_str = card->getEffectIdString();
+    room->sendLog(log);
+
+    if (card->isKindOf("Weapon")) {
+      QList<ServerPlayer *> targets;
+      foreach (ServerPlayer *p, room->getAllPlayers()) {
+          if (effect.to->distanceTo(p) == 1 && !p->isAllNude())
+              targets << p;
+      }
+      if (!targets.isEmpty()) {
+          ServerPlayer *to_dismantle = room->askForPlayerChosen(caohong, targets, "yuanhu");
+          int card_id = room->askForCardChosen(caohong, to_dismantle, "hej", "yuanhu");
+          room->throwCard(Sanguosha->getCard(card_id), to_dismantle, caohong);
+      }
+    } else if (card->isKindOf("Armor")) {
+        effect.to->drawCards(1);
+    } else if (card->isKindOf("Horse")) {
+        RecoverStruct recover;
+        recover.who = effect.from;
+        room->recover(effect.to, recover);
+    }
+}
+
+class YuanhuViewAsSkill: public OneCardViewAsSkill {
+public:
+    YuanhuViewAsSkill(): OneCardViewAsSkill("yuanhu") {
+    }
+
+    virtual bool isEnabledAtPlay(const Player *) const{
+        return false;
+    }
+
+    virtual bool isEnabledAtResponse(const Player *, const QString &pattern) const{
+        return pattern == "@@yuanhu";
+    }
+
+    virtual bool viewFilter(const Card *to_select) const{
+        return to_select->isKindOf("EquipCard");
+    }
+
+    virtual const Card *viewAs(const Card *originalcard) const{
+        YuanhuCard *first = new YuanhuCard;
+        first->addSubcard(originalcard->getId());
+        first->setSkillName(objectName());
+        return first;
+    }
+};
+
+class Yuanhu: public PhaseChangeSkill {
+public:
+    Yuanhu(): PhaseChangeSkill("yuanhu") {
+        view_as_skill = new YuanhuViewAsSkill;
+    }
+
+    virtual bool onPhaseChange(ServerPlayer *target) const{
+        Room *room = target->getRoom();
+        if (target->getPhase() == Player::Finish && !target->isNude()) {
+            room->askForUseCard(target, "@@yuanhu", "@yuanhu-equip");
+        }
+        return false;
+    }
+};
+
 class Xiuluo: public PhaseChangeSkill{
 public:
     Xiuluo():PhaseChangeSkill("xiuluo"){
@@ -410,6 +521,7 @@ public:
             QString pattern = QString(".%1").arg(suit_str.at(0).toUpper());
             QString prompt = QString("@xiuluo:::%1").arg(suit_str);
             if(room->askForCard(target, pattern, prompt, QVariant(), CardDiscarded)){
+                room->broadcastSkillInvoke(objectName());
                 room->throwCard(card, NULL);
                 once_success = true;
             }
@@ -426,6 +538,7 @@ public:
     }
 
     virtual int getDrawNum(ServerPlayer *player, int n) const{
+        player->getRoom()->broadcastSkillInvoke("shenwei");
         return n + 2;
     }
 };
@@ -471,7 +584,7 @@ public:
             room->getThread()->delay(5000);
 
             guanyu->setMark("danji", 1);
-			guanyu->gainMark("@waked");
+            guanyu->gainMark("@waked");
             room->loseMaxHp(guanyu);
             room->acquireSkill(guanyu, "mashu");
         }
@@ -551,7 +664,11 @@ SPPackage::SPPackage()
     sp_jiaxu->addSkill("weimu");
     sp_jiaxu->addSkill("#@chaos-1");
 
+    General *caohong = new General(this, "caohong", "wei");
+    caohong->addSkill(new Yuanhu);
+    
     addMetaObject<WeidiCard>();
+    addMetaObject<YuanhuCard>();
 }
 
 ADD_PACKAGE(SP)

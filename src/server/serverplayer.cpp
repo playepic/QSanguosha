@@ -55,7 +55,9 @@ void ServerPlayer::broadcastSkillInvoke(const Card *card) const{
         if(index == 0)
             return;
 
-        if(index == -1 && skill->getSources().isEmpty()){
+        if((index == -1 && (skill->getSources().isEmpty()
+                           || skill->objectName() == "hongyan"))
+           || index == -2){
             if(card->getCommonEffectName().isNull())
                 broadcastSkillInvoke(card->objectName());
             else room->broadcastSkillInvoke(card->getCommonEffectName(), "common");
@@ -407,7 +409,7 @@ void ServerPlayer::addCard(const Card *card, Place place){
 
     case PlaceEquip: {
             WrappedCard *wrapped = Sanguosha->getWrappedCard(card->getEffectiveId());
-            const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+            const EquipCard *equip = qobject_cast<const EquipCard *>(wrapped->getRealCard());
             setEquip(wrapped);
             equip->onInstall(this);
             break;
@@ -519,6 +521,8 @@ bool ServerPlayer::pindian(ServerPlayer *target, const QString &reason, const Ca
     }
 
     const Card *card2 = room->askForPindian(target, this, target, reason);
+
+    if (card1 == NULL || card2 == NULL) return false;
 
     PindianStruct pindian_struct;
     pindian_struct.from = this;
@@ -821,6 +825,7 @@ int ServerPlayer::getGeneralMaxHp() const{
         if(Config.GameMode.contains("_mini_"))plan = 1;
 
         switch(plan){
+        case 4: max_hp = qMax(first, second); break;
         case 3: max_hp = first + second - 4; break;
         case 2: max_hp = (first + second)/2; break;
         case 1: max_hp = qMin(first, second); break;

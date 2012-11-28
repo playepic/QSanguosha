@@ -104,8 +104,8 @@ RoomScene::RoomScene(QMainWindow *main_window):
         connect(Self, SIGNAL(general2_changed()), dashboard, SLOT(updateSmallAvatar()));
         connect(dashboard, SIGNAL(card_selected(const Card*)), this, SLOT(enableTargets(const Card*)));
         connect(dashboard, SIGNAL(card_to_use()), this, SLOT(doOkButton()));
-        connect(dashboard, SIGNAL(add_equip_skill(const Skill*,bool)), this, SLOT(addSkillButton(const Skill*,bool)));
-        connect(dashboard, SIGNAL(remove_equip_skill(QString)), this, SLOT(detachSkill(QString)));
+        //connect(dashboard, SIGNAL(add_equip_skill(const Skill*,bool)), this, SLOT(addSkillButton(const Skill*,bool)));
+        //connect(dashboard, SIGNAL(remove_equip_skill(QString)), this, SLOT(detachSkill(QString)));
     }
 
     connect(Self, SIGNAL(pile_changed(QString)), dashboard, SLOT(updatePile(QString)));
@@ -476,10 +476,13 @@ void RoomScene::handleGameEvent(const Json::Value &arg)
         QString playerName = arg[1].asCString();
         QString newHeroName =  arg[2].asCString();
         bool isSecondaryHero = arg[3].asBool();
-        bool senLog = arg[4].asBool();
+        bool sendLog = arg[4].asBool();
         ClientPlayer *player = ClientInstance->getPlayer(playerName);
-        if(senLog)
+        if(sendLog)
             log_box->appendLog("#Transfigure", player->getGeneralName(), QStringList(), QString(), newHeroName);
+        if (player->getGeneralName() == "shenlvbu1" && newHeroName == "shenlvbu2"
+            && player->getMark("secondMode") > 0)
+            Sanguosha->playSystemAudioEffect("stagechange");
         if (player != Self) break;     
         const General* oldHero = isSecondaryHero ? player->getGeneral2() : player->getGeneral();
         const General* newHero = Sanguosha->getGeneral(newHeroName);
@@ -503,7 +506,6 @@ void RoomScene::handleGameEvent(const Json::Value &arg)
         break;
     }
 }
-     
 
 QGraphicsItem *RoomScene::createDashboardButtons(){
     QGraphicsItem *widget = new QGraphicsPixmapItem(
@@ -944,8 +946,7 @@ void RoomScene::updateTable()
 }
 
 void RoomScene::addPlayer(ClientPlayer *player){
-    int i;
-    for(i=0; i<photos.length(); i++){
+    for (int i = 0; i < photos.length(); i++) {
         Photo *photo = photos[i];
         if(photo->getPlayer() == NULL){
             photo->setPlayer(player);
@@ -1125,8 +1126,31 @@ void RoomScene::enableTargets(const Card *card) {
 
     updateTargetsEnablity(card);
 
-    if(Config.EnableAutoTarget)
-        selectNextTarget(false);
+    if (selected_targets.isEmpty()) {
+        if (card->isKindOf("Slash") && Self->hasFlag("slashTargetFixToOne")) {
+            unselectAllTargets();
+            foreach(Photo *photo, photos){
+                if(photo->flags() & QGraphicsItem::ItemIsSelectable)
+                    if(!photo->isSelected()){
+                        photo->setSelected(true);
+                        break;
+                    }
+            }
+        } else if (Config.EnableAutoTarget) {
+            if (!card->targetsFeasible(selected_targets, Self)) {
+                unselectAllTargets();
+                int count = 0;
+                foreach(Photo *photo, photos)
+                    if(photo->flags() & QGraphicsItem::ItemIsSelectable)
+                        count++;
+                if (dashboard->flags() & QGraphicsItem::ItemIsSelectable)
+                    count++;
+                if (count == 1) {
+                    selectNextTarget(false);
+                }
+            }
+        }
+    }
 
     ok_button->setEnabled(card->targetsFeasible(selected_targets, Self));
 }
@@ -1214,19 +1238,31 @@ void RoomScene::keyReleaseEvent(QKeyEvent *event){
         return;
 
     bool control_is_down = event->modifiers() & Qt::ControlModifier;
+    bool alt_is_down = event->modifiers() & Qt::AltModifier;
 
     switch(event->key()){
     case Qt::Key_F1: break;
     case Qt::Key_F2: chooseSkillButton(); break;
     case Qt::Key_F3: dashboard->sortCards(); break;
+    case Qt::Key_F4: dashboard->reverseSelection(); break;
+    case Qt::Key_F5: {
+            if (control_is_down) {
+                if (add_robot && add_robot->isVisible())
+                    ClientInstance->addRobot();
+            } else if (fill_robots && fill_robots->isVisible())
+                ClientInstance->fillRobots();
+            break;
+        }
 
     case Qt::Key_S: dashboard->selectCard("slash");  break;
     case Qt::Key_J: dashboard->selectCard("jink"); break;
     case Qt::Key_P: dashboard->selectCard("peach"); break;
+    case Qt::Key_O: dashboard->selectCard("analeptic"); break;
 
     case Qt::Key_E: dashboard->selectCard("equip"); break;
     case Qt::Key_W: dashboard->selectCard("weapon"); break;
-    case Qt::Key_H: dashboard->selectCard("Horse"); break;
+    case Qt::Key_F: dashboard->selectCard("armor"); break;
+    case Qt::Key_H: dashboard->selectCard("defensive_horse+offensive_horse"); break;
 
     case Qt::Key_T: dashboard->selectCard("trick"); break;
     case Qt::Key_A: dashboard->selectCard("aoe"); break;
@@ -1236,15 +1272,10 @@ void RoomScene::keyReleaseEvent(QKeyEvent *event){
     case Qt::Key_U: dashboard->selectCard("duel"); break;
     case Qt::Key_L: dashboard->selectCard("lightning"); break;
     case Qt::Key_I: dashboard->selectCard("indulgence"); break;
-    case Qt::Key_R: dashboard->selectCard("collateral"); break;
-    case Qt::Key_Y: dashboard->selectCard("god_salvation"); break;
+    case Qt::Key_B: dashboard->selectCard("supply_shortage"); break;
 
-    case Qt::Key_Left: dashboard->selectCard(".", false); break;
-    case Qt::Key_Right:
-    case Qt::Key_Space:  dashboard->selectCard("."); break; // iterate all cards
-    case Qt::Key_F:  break; // fix the selected
-
-    case Qt::Key_G: selectNextTarget(control_is_down); break; // iterate generals
+    case Qt::Key_Left: dashboard->selectCard(".", false, control_is_down); break;
+    case Qt::Key_Right: dashboard->selectCard(".", true, control_is_down); break; // iterate all cards
 
     case Qt::Key_Return : {
             if(ok_button->isEnabled())
@@ -1252,48 +1283,54 @@ void RoomScene::keyReleaseEvent(QKeyEvent *event){
             break;
         }
 
-    case Qt::Key_Escape : {            
-            if(ClientInstance->getStatus() == Client::Playing){
+    case Qt::Key_Escape : {
+            if (ClientInstance->getStatus() == Client::Playing) {
                 dashboard->unselectAll();
                 enableTargets(NULL);
-            }
+            } else
+                dashboard->unselectAll();
             break;
         }
 
+    case Qt::Key_Space: {
+            if (cancel_button->isEnabled())
+                doCancelButton();
+            else if (discard_button->isEnabled())
+                doDiscardButton();
+        }
+        
     case Qt::Key_0:
     case Qt::Key_1:
     case Qt::Key_2:
     case Qt::Key_3:
-    case Qt::Key_4:
+    case Qt::Key_4: {
+            int position = event->key() - Qt::Key_0;
+            if (position != 0 && alt_is_down) {
+                dashboard->selectEquip(position);
+                break;
+            }
+        }
     case Qt::Key_5:
     case Qt::Key_6:
     case Qt::Key_7:
     case Qt::Key_8:
     case Qt::Key_9:{
-            int seat = event->key() - Qt::Key_0 + 1;
-            int i;
-            for(i=0; i<photos.length(); i++){
-                if(photos.at(i)->getPlayer()->getSeat() == seat){
-                    selectTarget(i, control_is_down);
-                    break;
-                }
-            }
+            int order = event->key() - Qt::Key_0;
+            selectTarget(order, control_is_down);
             break;
         }
 
     case Qt::Key_D:{
-            // for debugging use
-
-            if(chat_box_widget){
-                QString msg = QString("chat_box_widget (%1, %2)")
-                              .arg(chat_box_widget->x()).arg(chat_box_widget->y());
-
-                QMessageBox::information(main_window, "", msg);
+            if (Self == NULL)
+                return;
+            foreach (Photo* photo, photos) {
+                if (photo->getPlayer() && photo->getPlayer()->isAlive())
+                    photo->showDistance();
             }
+            break;
         }
     }
 }
-
 
 void RoomScene::chooseGeneral(const QStringList &generals){
     QApplication::alert(main_window);
@@ -1743,8 +1780,21 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct &move)
     if (move.from_place == Player::DrawPile && move.to_place == Player::PlaceHand)
     {
         QString to_general = move.to->getGeneralName();
-        log_box->appendLog("#DrawNCards", to_general, QStringList(), QString(),
-                            QString::number(move.card_ids.length()));
+        QString card_str;
+        if (move.to == Self) {
+            foreach(int card_id, move.card_ids){
+                if(card_str.isEmpty())
+                    card_str = QString::number(card_id);
+                else
+                    card_str += "+" + QString::number(card_id);
+            }
+            log_box->appendLog("$DrawCards", to_general, QStringList(), card_str,
+                               QString::number(move.card_ids.length()));
+        }
+        else {
+            log_box->appendLog("#DrawNCards", to_general, QStringList(), QString(),
+                               QString::number(move.card_ids.length()));
+        }
     }
     if(move.from_place == Player::PlaceTable && move.to_place == Player::PlaceHand)
     {
@@ -1860,7 +1910,7 @@ void RoomScene::addSkillButton(const Skill *skill, bool from_left){
         connect(btn, SIGNAL(skill_activated()), this, SLOT(onSkillActivated()));
         connect(btn, SIGNAL(skill_deactivated()), dashboard, SLOT(skillButtonDeactivated()));
         connect(btn, SIGNAL(skill_deactivated()), this, SLOT(onSkillDeactivated()));
-        if (btn->getViewAsSkill()->objectName() == "#mizhao")
+        if (btn->getViewAsSkill()->objectName() == "mizhao")
             connect(btn, SIGNAL(skill_activated()), dashboard, SLOT(selectAll()));
     }
     
@@ -2063,6 +2113,9 @@ void RoomScene::cancelViewAsSkill(){
 }
 
 void RoomScene::selectTarget(int order, bool multiple){
+    if(!multiple)
+        unselectAllTargets();
+
     QGraphicsItem *to_select = NULL;
 
     if(order == 0)
@@ -2070,11 +2123,13 @@ void RoomScene::selectTarget(int order, bool multiple){
     else if(order > 0 && order <= photos.length())
         to_select = photos.at(order - 1);
 
-    if(!multiple)
-        unselectAllTargets(to_select);
+    if (!to_select)
+        return;
+    if (!(to_select->isSelected()
+          || (!to_select->isSelected() && (to_select->flags() & QGraphicsItem::ItemIsSelectable))))
+        return;
 
-    if(to_select)
-        to_select->setSelected(! to_select->isSelected());
+    to_select->setSelected(!to_select->isSelected());
 }
 
 void RoomScene::selectNextTarget(bool multiple){
@@ -3043,6 +3098,12 @@ void RoomScene::killPlayer(const QString &who){
             enemy_box->killPlayer(general->objectName());
     }
 
+    ClientPlayer *player = ClientInstance->getPlayer(who);
+    if (player) {
+        PlayerCardContainer *container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand, player);
+        container->stopHuaShen();
+    }
+
     if(Config.EnableLastWord && !Self->hasFlag("marshalling"))
         general->lastWord();
     m_roomMutex.unlock();
@@ -3127,7 +3188,7 @@ void RoomScene::chooseSkillButton(){
 
     foreach (QSanSkillButton* btn, enabled_buttons) {
         QCommandLinkButton *button = new QCommandLinkButton(Sanguosha->translate(btn->getSkill()->objectName()));
-        connect(button, SIGNAL(clicked()), btn, SIGNAL(clicked()));
+        connect(button, SIGNAL(clicked()), btn, SLOT(click()));
         connect(button, SIGNAL(clicked()), dialog, SLOT(accept()));
         layout->addWidget(button);
     }
@@ -3602,7 +3663,7 @@ void RoomScene::showIndicator(const QString &from, const QString &to){
     qreal x = qMin(start.x(), finish.x());
     qreal y = qMin(start.y(), finish.y());
     indicator->setPos(x, y);
-    indicator->setZValue(9.0);
+    indicator->setZValue(30000.0);
 
     addItem(indicator);
 
@@ -3863,7 +3924,7 @@ void RoomScene::selectGeneral(){
 void RoomScene::changeGeneral(const QString &general){
     if(to_change && arrange_button){
         to_change->changeGeneral(general);
-        to_change->scaleSmoothly(0.4);
+        //to_change->scaleSmoothly(0.4);
     }
 }
 
